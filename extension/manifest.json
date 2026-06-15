@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Job Hunt Copilot — Autofill",
+  "version": "0.1.0",
+  "description": "Fills application forms from your Job Hunt Copilot profile. You review and submit every application yourself.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://localhost:3000/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Job Hunt Copilot autofill"
+  }
+}

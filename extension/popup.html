@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: -apple-system, system-ui, sans-serif;
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        color: #18181b;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 2px;
+      }
+      p.sub {
+        font-size: 11px;
+        color: #71717a;
+        margin: 0 0 12px;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        border-radius: 6px;
+        border: none;
+        background: #18181b;
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: white;
+        color: #18181b;
+        border: 1px solid #d4d4d8;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .row {
+        margin-top: 10px;
+      }
+      select {
+        width: 100%;
+        padding: 6px;
+        border-radius: 6px;
+        border: 1px solid #d4d4d8;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      #status {
+        font-size: 11px;
+        margin-top: 10px;
+        white-space: pre-wrap;
+      }
+      .ok {
+        color: #15803d;
+      }
+      .err {
+        color: #b91c1c;
+      }
+      .divider {
+        height: 1px;
+        background: #e4e4e7;
+        margin: 14px 0;
+      }
+      .note {
+        font-size: 10px;
+        color: #a1a1aa;
+        margin-top: 12px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Job Hunt Copilot</h1>
+    <p class="sub">Fill this form from your saved profile.</p>
+
+    <button id="autofill">Autofill this page</button>
+    <div id="status"></div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <label style="font-size: 11px; color: #71717a">Mark an application as applied</label>
+      <select id="appSelect"><option value="">Loading…</option></select>
+      <button id="markApplied" class="secondary">Mark as applied</button>
+    </div>
+
+    <p class="note">
+      This only fills fields and highlights what it filled (green) and likely required
+      fields it left blank (orange). It never submits — you review and click submit
+      yourself. Requires the app running at http://localhost:3000.
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
