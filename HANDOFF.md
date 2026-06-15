@@ -19,12 +19,20 @@ Built this session (verified: `npm run build` = 0, eslint clean, scripts run via
 
 **Hard rule honored:** OAuth only, never asks for/accepts the Gmail password. Scope = `gmail.readonly`. Tokens live only in `.env.local`.
 
+## Review queue UI — DONE
+Added a "Needs review" panel to the dashboard (`src/app/page.tsx`):
+- `GET /api/email/triage/review` (`src/app/api/email/triage/review/route.ts`) — lists `email_triage_log` rows where `applied=0 AND dismissed=0 AND suggested_status IS NOT NULL`, joined to the matched application's company/title.
+- `PATCH /api/email/triage/review/[id]` (`src/app/api/email/triage/review/[id]/route.ts`) — body `{ action: "confirm" | "dismiss" }`. `confirm` applies the suggested status to the matched application + sets `applied=1`; `dismiss` sets `dismissed=1` (no tracker change).
+- DB: added `dismissed INTEGER NOT NULL DEFAULT 0` to `email_triage_log` (migration + schema).
+- Verified end-to-end via browser preview: seeded two fake triage rows, confirmed one (moved a card between columns and removed it from the queue) and dismissed the other (queue emptied, panel disappears). Test rows cleaned up afterward and the real application's status was restored.
+- Note: **the dev server actually works via `preview_start`** in this environment (contrary to the old note below) — `.claude/launch.json` now exists with a `job-hunt-copilot` config on port 3000.
+
 ### What's left — next backlog items
 1. User runs the `cp` + `launchctl load` commands printed by `install-schedule` to actually activate the `poll-gmail` (every 30 min) and `refresh-feed` (daily 8am) launch agents.
-2. Review-queue UI (backlog item 2): surface `email_triage_log` rows where `applied = 0` on the dashboard.
+2. Browser-extension Gmail/LinkedIn feed (BACKLOG item 2) → Gmail send for outreach (BACKLOG item 3).
 
 ## Remaining backlog (see `BACKLOG.md`)
-Review-queue dashboard UI (surface `email_triage_log` rows where `applied = 0`) → browser-extension Gmail/LinkedIn feed → Gmail send (per-message confirm). LinkedIn = pre-fill + user-clicks-send only (automation violates ToS).
+Browser-extension Gmail/LinkedIn feed → Gmail send (per-message confirm). LinkedIn = pre-fill + user-clicks-send only (automation violates ToS).
 
 ## Environment quirks (important)
 - **Node via nvm**: prefix Bash with `source ~/.zshrc`. No Homebrew/system node.

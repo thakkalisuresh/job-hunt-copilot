@@ -3,9 +3,14 @@
 import { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
 import type { JobWithApplication } from "./api/jobs/route";
+import type { ReviewItem } from "./api/email/triage/review/route";
 import { APPLICATION_STATUSES } from "@/lib/statuses";
 
 const STATUSES = APPLICATION_STATUSES;
+
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  APPLICATION_STATUSES.map((s) => [s.key, s.label])
+);
 
 type PageFit = { fitsOnePage: boolean; linesOver: number };
 
@@ -14,11 +19,13 @@ export default function TrackerPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [masterFit, setMasterFit] = useState<PageFit | null>(null);
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
 
   async function load() {
-    const [jobsRes, resumeRes] = await Promise.all([
+    const [jobsRes, resumeRes, reviewRes] = await Promise.all([
       fetch("/api/jobs"),
       fetch("/api/resume"),
+      fetch("/api/email/triage/review"),
     ]);
     const data = await jobsRes.json();
     setJobs(data.jobs || []);
@@ -28,7 +35,23 @@ export default function TrackerPage() {
     } catch {
       /* no master resume yet */
     }
+    try {
+      const reviewData = await reviewRes.json();
+      setReviewItems(reviewData.items || []);
+    } catch {
+      /* triage table not populated yet */
+    }
     setLoading(false);
+  }
+
+  async function resolveReviewItem(id: number, action: "confirm" | "dismiss") {
+    setReviewItems((prev) => prev.filter((item) => item.id !== id));
+    await fetch(`/api/email/triage/review/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    if (action === "confirm") load();
   }
 
   useEffect(() => {
@@ -77,6 +100,63 @@ export default function TrackerPage() {
             Setup
           </Link>
           .
+        </div>
+      )}
+
+      {reviewItems.length > 0 && (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-blue-900">
+            Needs review{" "}
+            <span className="text-blue-500">({reviewItems.length})</span>
+          </h2>
+          <div className="flex flex-col gap-2">
+            {reviewItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col gap-2 rounded-md border border-blue-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="text-sm">
+                  <div className="font-medium">
+                    {item.subject || "(no subject)"}
+                  </div>
+                  <div className="text-xs text-zinc-500">
+                    From {item.fromAddress || "unknown"}
+                    {item.company && (
+                      <>
+                        {" "}
+                        — matched to <strong>{item.company}</strong>
+                        {item.title ? ` (${item.title})` : ""}
+                      </>
+                    )}
+                  </div>
+                  <div className="text-xs text-zinc-500">
+                    Suggests:{" "}
+                    <strong>
+                      {STATUS_LABELS[item.suggestedStatus ?? ""] ?? item.suggestedStatus}
+                    </strong>{" "}
+                    &middot; confidence: {item.confidence}
+                    {item.reason ? ` — ${item.reason}` : ""}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {item.applicationId && (
+                    <button
+                      onClick={() => resolveReviewItem(item.id, "confirm")}
+                      className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                    >
+                      Apply status
+                    </button>
+                  )}
+                  <button
+                    onClick={() => resolveReviewItem(item.id, "dismiss")}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -44,6 +44,13 @@ function runMigrations(db: Database.Database) {
   db.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url) WHERE url IS NOT NULL"
   );
+
+  const triageColumns = db
+    .prepare("PRAGMA table_info(email_triage_log)")
+    .all() as { name: string }[];
+  if (!triageColumns.some((c) => c.name === "dismissed")) {
+    db.exec("ALTER TABLE email_triage_log ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 const SCHEMA = `
@@ -115,6 +122,7 @@ CREATE TABLE IF NOT EXISTS email_triage_log (
   match_score INTEGER,
   suggested_status TEXT,
   applied INTEGER NOT NULL DEFAULT 0,
+  dismissed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
