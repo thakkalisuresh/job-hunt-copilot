@@ -23,6 +23,6 @@ These finish the "act on my behalf" features. They need things only the user can
 - **Build:** extend the Phase-7 Chrome extension to (a) read the open Gmail tab as an immediate triage feed, and (b) **pre-fill** a LinkedIn DM / Gmail compose in the open tab for the user to click send.
 - **Constraint:** pre-fill + user-clicks-send only. Automated LinkedIn sending violates ToS and risks account bans regardless of mechanism — opt-in/explore only, never default.
 
-### 2. Gmail send for outreach (feature B)
-- **Needs from user:** the same OAuth client with Gmail send scope.
-- **Build:** "send via Gmail" on the outreach panel with a **per-message confirm** (review recipient + body first). No bulk/auto-send. Also needs a way to capture the recruiter's email (user-provided/paste for v1).
+## Shipped (2026-06-15, cont'd)
+- **Gmail send for outreach** — `src/lib/gmail.ts` adds `sendEmail()` + `GMAIL_SEND_SCOPE`. `POST /api/applications/[id]/outreach/send` sends the exact recipient/subject/body the client posts. Lab outreach panel now has editable To/Subject/Body fields and a **Send via Gmail** button gated by a `confirm()` dialog (recipient + subject shown) — no auto-send. On success, recipient is saved as `recruiter_email` on the application.
+- **Needs from user:** re-run `npm run connect-gmail` — the current refresh token is read-only (`gmail.readonly` only); the connect script now requests `gmail.readonly` + `gmail.send` together, and re-running upgrades the existing token (Google will show an extra consent screen for "send email"). Then update `GOOGLE_REFRESH_TOKEN` in `.env.local` with the new value and restart the dev server.
