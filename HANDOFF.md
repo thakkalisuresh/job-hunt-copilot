@@ -33,8 +33,10 @@ Added a "Needs review" panel to the dashboard (`src/app/page.tsx`):
 `matchApplication` in `src/lib/email-triage.ts` now scores a role-title match in the email body as +2 (was +1), same as a company-name match. Rationale: ATS senders (Greenhouse, Workday, Lever) rarely match the company's domain, but their templates almost always restate both the company and the role — so company+title in body now scores 4 (confidently auto-applies), while a title-only match scores 2 (stays in the review queue, avoiding ambiguity across same-titled roles at different companies). Verified with a scenario script; pushed as `18f7ff4`.
 
 ### What's left — next backlog items
-1. User runs the `cp` + `launchctl load` commands printed by `install-schedule` to actually activate the `poll-gmail` (every 30 min) and `refresh-feed` (daily 8am) launch agents.
-2. Browser-extension Gmail/LinkedIn feed (BACKLOG item 2) → Gmail send for outreach (BACKLOG item 3).
+1. Browser-extension Gmail/LinkedIn feed (BACKLOG item 1) → Gmail send for outreach (BACKLOG item 2).
+
+## Launchd schedules — ACTIVE
+Both `com.jobhuntcopilot.pollgmail` (every 30 min) and `com.jobhuntcopilot.refresh` (daily 08:00) are loaded and running (`launchctl list | grep jobhuntcopilot`). poll-gmail has already completed multiple clean runs; refresh-feed completed its first run (50 jobs added, 47/50 enriched — 3 hit a transient Anthropic 429 rate limit, harmless, will retry next run). The "Load failed: 5: Input/output error" message from `launchctl load` on modern macOS is cosmetic — the job loads fine despite it.
 
 ## Remaining backlog (see `BACKLOG.md`)
 Browser-extension Gmail/LinkedIn feed → Gmail send (per-message confirm). LinkedIn = pre-fill + user-clicks-send only (automation violates ToS).
