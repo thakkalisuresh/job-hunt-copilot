@@ -6,7 +6,9 @@ Building **Job Hunt Copilot** at `~/Downloads/Claude/Projects/job-hunt-copilot` 
 ## Current task: Gmail connector — DONE, OAuth connected and verified live
 `.env.local` has real `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN`. `npm run poll-gmail` was run against the real inbox: found 6 messages (last 7 days), all correctly classified as `other` (Google account-setup emails, no tracker-relevant content yet), logged to `email_triage_log`, none auto-applied.
 
-✅ App published in Google Cloud Console — refresh token is long-lived, no 7-day expiry to worry about.
+✅ App published in Google Cloud Console (confirmed by user — hit Publish on the OAuth consent screen, not just left in Testing) — refresh token is long-lived, no 7-day expiry to worry about.
+
+✅ GitHub account `thakkalisuresh` confirmed by user to be their own account — the private repo push is fine.
 
 `scripts/install-schedule.ts` now supports both jobs: `npm run install-schedule -- poll-gmail [minutes]` (default 30 min, uses `StartInterval`) and `npm run install-schedule [hour] [minute]` (refresh-feed, daily, unchanged). Generated `scripts/com.jobhuntcopilot.pollgmail.plist` (every 30 min) and `scripts/com.jobhuntcopilot.refresh.plist`. **Not yet installed** — the user still needs to run the printed `cp` + `launchctl load` commands for each plist (the script intentionally never calls launchctl itself).
 
@@ -26,6 +28,9 @@ Added a "Needs review" panel to the dashboard (`src/app/page.tsx`):
 - DB: added `dismissed INTEGER NOT NULL DEFAULT 0` to `email_triage_log` (migration + schema).
 - Verified end-to-end via browser preview: seeded two fake triage rows, confirmed one (moved a card between columns and removed it from the queue) and dismissed the other (queue emptied, panel disappears). Test rows cleaned up afterward and the real application's status was restored.
 - Note: **the dev server actually works via `preview_start`** in this environment (contrary to the old note below) — `.claude/launch.json` now exists with a `job-hunt-copilot` config on port 3000.
+
+## Email-triage matching — role title weighted up
+`matchApplication` in `src/lib/email-triage.ts` now scores a role-title match in the email body as +2 (was +1), same as a company-name match. Rationale: ATS senders (Greenhouse, Workday, Lever) rarely match the company's domain, but their templates almost always restate both the company and the role — so company+title in body now scores 4 (confidently auto-applies), while a title-only match scores 2 (stays in the review queue, avoiding ambiguity across same-titled roles at different companies). Verified with a scenario script; pushed as `18f7ff4`.
 
 ### What's left — next backlog items
 1. User runs the `cp` + `launchctl load` commands printed by `install-schedule` to actually activate the `poll-gmail` (every 30 min) and `refresh-feed` (daily 8am) launch agents.
