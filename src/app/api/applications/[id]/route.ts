@@ -33,6 +33,7 @@ export async function GET(
         resume_version_id: number | null;
         notes: string | null;
         outreach_draft: string | null;
+        recruiter_email: string | null;
         company: string;
         title: string;
         location: string | null;
@@ -72,6 +73,7 @@ export async function GET(
       resumeVersionId: application.resume_version_id,
       notes: application.notes,
       outreachDraft: application.outreach_draft,
+      recruiterEmail: application.recruiter_email,
       company: application.company,
       title: application.title,
       location: application.location,

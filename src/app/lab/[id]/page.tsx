@@ -23,6 +23,7 @@ interface ApplicationDetail {
   jdText: string | null;
   url: string | null;
   outreachDraft: string | null;
+  recruiterEmail: string | null;
   fit: { fitsOnePage: boolean; linesOver: number } | null;
 }
 
@@ -245,11 +246,16 @@ export default function ResumeLabPage({ params }: { params: Promise<{ id: string
         <ExportPanel resumeVersionId={application.resumeVersionId} fit={application.fit} />
 
         <OutreachPanel
+          applicationId={application.id}
           draft={outreach}
           busy={outreachBusy}
           disabled={!application.jdText}
           onGenerate={generateOutreach}
           company={application.company}
+          recruiterEmail={application.recruiterEmail}
+          onSent={(to) =>
+            setApplication((prev) => (prev ? { ...prev, recruiterEmail: to } : prev))
+          }
         />
       </div>
     </div>
@@ -309,25 +315,77 @@ function ExportPanel({
 }
 
 function OutreachPanel({
+  applicationId,
   draft,
   busy,
   disabled,
   onGenerate,
   company,
+  recruiterEmail,
+  onSent,
 }: {
+  applicationId: number;
   draft: OutreachDraft | null;
   busy: boolean;
   disabled: boolean;
   onGenerate: () => void;
   company: string;
+  recruiterEmail: string | null;
+  onSent: (to: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [to, setTo] = useState(recruiterEmail || "");
+  const [subject, setSubject] = useState(draft?.subject || "");
+  const [body, setBody] = useState(draft?.body || "");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  // Reset editable fields when a (re)generated draft or saved recipient arrives.
+  const [prevDraft, setPrevDraft] = useState(draft);
+  if (draft !== prevDraft) {
+    setPrevDraft(draft);
+    setSubject(draft?.subject || "");
+    setBody(draft?.body || "");
+    setSent(false);
+  }
+  const [prevRecruiterEmail, setPrevRecruiterEmail] = useState(recruiterEmail);
+  if (recruiterEmail !== prevRecruiterEmail) {
+    setPrevRecruiterEmail(recruiterEmail);
+    setTo(recruiterEmail || "");
+  }
 
   async function copy() {
     if (!draft) return;
-    await navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function send() {
+    if (!to.trim() || !subject.trim() || !body.trim()) return;
+    if (
+      !window.confirm(
+        `Send this email to ${to.trim()} now?\n\nSubject: ${subject}\n\nThis will send immediately via your connected Gmail account.`
+      )
+    ) {
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    const res = await fetch(`/api/applications/${applicationId}/outreach/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: to.trim(), subject, body }),
+    });
+    const data = await res.json();
+    setSending(false);
+    if (!res.ok) {
+      setSendError(data.error || "Failed to send email");
+      return;
+    }
+    setSent(true);
+    onSent(to.trim());
   }
 
   return (
@@ -336,7 +394,8 @@ function OutreachPanel({
         <div>
           <h2 className="text-lg font-medium">Outreach draft</h2>
           <p className="text-sm text-zinc-500">
-            A short personalized email. Draft only — nothing is sent automatically.
+            A short personalized email. Review and edit before sending — nothing is sent
+            without your confirmation.
           </p>
         </div>
         <button
@@ -350,9 +409,48 @@ function OutreachPanel({
 
       {draft && (
         <div className="mt-4 border-t border-zinc-100 pt-4 text-sm">
-          <p className="font-medium">{draft.subject}</p>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-zinc-700">{draft.body}</pre>
-          <div className="mt-3 flex gap-2">
+          <label className="block text-xs font-medium text-zinc-500">To</label>
+          <input
+            type="email"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setSent(false);
+            }}
+            placeholder="recruiter@company.com"
+            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+          />
+
+          <label className="mt-3 block text-xs font-medium text-zinc-500">Subject</label>
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => {
+              setSubject(e.target.value);
+              setSent(false);
+            }}
+            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm font-medium"
+          />
+
+          <label className="mt-3 block text-xs font-medium text-zinc-500">Body</label>
+          <textarea
+            value={body}
+            onChange={(e) => {
+              setBody(e.target.value);
+              setSent(false);
+            }}
+            rows={8}
+            className="mt-1 w-full resize-y rounded border border-zinc-300 px-2 py-1 font-sans text-sm text-zinc-700"
+          />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={send}
+              disabled={sending || !to.trim() || !subject.trim() || !body.trim()}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {sending ? "Sending…" : "Send via Gmail"}
+            </button>
             <button
               onClick={copy}
               className="rounded border border-zinc-300 px-3 py-1 text-xs font-medium hover:bg-zinc-50"
@@ -360,7 +458,7 @@ function OutreachPanel({
               {copied ? "Copied" : "Copy"}
             </button>
             <a
-              href={buildMailto(draft)}
+              href={buildMailto({ subject, body }, to)}
               className="rounded border border-zinc-300 px-3 py-1 text-xs font-medium hover:bg-zinc-50"
             >
               Open in email client
@@ -374,9 +472,18 @@ function OutreachPanel({
               Find recruiter on LinkedIn ↗
             </a>
           </div>
+
+          {sent && (
+            <p className="mt-2 text-xs font-medium text-emerald-600">
+              ✓ Sent to {to.trim()}.
+            </p>
+          )}
+          {sendError && <p className="mt-2 text-xs font-medium text-red-600">{sendError}</p>}
+
           <p className="mt-2 text-xs text-zinc-400">
-            Send it yourself: open your email client, or find the recruiter on LinkedIn and
-            paste the message. Nothing is sent automatically.
+            &ldquo;Send via Gmail&rdquo; sends this exact text immediately via your connected
+            Gmail account, after a confirmation prompt. Or send it yourself: open your email
+            client, or find the recruiter on LinkedIn and paste the message.
           </p>
         </div>
       )}

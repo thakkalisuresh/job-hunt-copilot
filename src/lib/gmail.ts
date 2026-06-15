@@ -1,12 +1,13 @@
 import { google } from "googleapis";
 
 /**
- * Read-only Gmail client (BACKLOG feature A). Auth comes from a one-time OAuth
- * handshake (`npm run connect-gmail`, see scripts/connect-gmail.ts) whose
- * refresh token is stored in `.env.local`. Scope: gmail.readonly.
+ * Gmail client. Auth comes from a one-time OAuth handshake (`npm run connect-gmail`,
+ * see scripts/connect-gmail.ts) whose refresh token is stored in `.env.local`.
+ * Scopes: gmail.readonly (poll-gmail) + gmail.send (outreach, per-message confirm only).
  */
 
 export const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 export interface GmailMessage {
   id: string;
@@ -110,6 +111,41 @@ function extractBody(part: GmailPart | undefined): string {
 
   walk(part);
   return plain.trim() || stripHtml(html);
+}
+
+function encodeBase64Url(data: string): string {
+  return Buffer.from(data, "utf-8").toString("base64url");
+}
+
+/**
+ * Send a plain-text email from the connected Gmail account. Requires the
+ * gmail.send scope (re-run `npm run connect-gmail` if the current refresh
+ * token only has gmail.readonly). Caller is responsible for confirming the
+ * recipient/subject/body with the user first — this sends immediately.
+ */
+export async function sendEmail({
+  to,
+  subject,
+  body,
+}: {
+  to: string;
+  subject: string;
+  body: string;
+}): Promise<{ id: string }> {
+  const gmail = getGmailClient();
+  const message =
+    `To: ${to}\r\n` +
+    `Subject: ${subject}\r\n` +
+    `Content-Type: text/plain; charset="UTF-8"\r\n` +
+    `MIME-Version: 1.0\r\n\r\n` +
+    body;
+
+  const res = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodeBase64Url(message) },
+  });
+
+  return { id: res.data.id ?? "" };
 }
 
 /** Fetch and parse a single message: sender, subject, date, plain-text body. */

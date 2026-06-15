@@ -51,6 +51,10 @@ function runMigrations(db: Database.Database) {
   if (!triageColumns.some((c) => c.name === "dismissed")) {
     db.exec("ALTER TABLE email_triage_log ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0");
   }
+
+  if (!appColumns.some((c) => c.name === "recruiter_email")) {
+    db.exec("ALTER TABLE applications ADD COLUMN recruiter_email TEXT");
+  }
 }
 
 const SCHEMA = `
@@ -86,6 +90,7 @@ CREATE TABLE IF NOT EXISTS applications (
   status TEXT NOT NULL DEFAULT 'saved',
   resume_version_id INTEGER REFERENCES resumes(id),
   outreach_draft TEXT,
+  recruiter_email TEXT,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

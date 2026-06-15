@@ -3,14 +3,18 @@
  *
  * Run `npm run connect-gmail` after adding GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
  * (from a Google Cloud "Desktop app" OAuth client) to `.env.local`. This opens a
- * browser for you to sign in and grant read-only Gmail access, then prints a
+ * browser for you to sign in and grant read + send Gmail access, then prints a
  * refresh token to paste into `.env.local` as GOOGLE_REFRESH_TOKEN.
+ *
+ * Re-run this (even if already connected) to upgrade an existing read-only
+ * refresh token to one that also covers gmail.send for the outreach feature —
+ * Google will prompt for the additional permission.
  *
  * OAuth only — this never sees or asks for your Gmail password.
  */
 import http from "http";
 import { exec } from "child_process";
-import { getOAuth2Client, GMAIL_READONLY_SCOPE } from "../src/lib/gmail";
+import { getOAuth2Client, GMAIL_READONLY_SCOPE, GMAIL_SEND_SCOPE } from "../src/lib/gmail";
 
 try {
   process.loadEnvFile(".env.local");
@@ -47,10 +51,10 @@ async function main() {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent", // forces a refresh token even on repeat runs
-    scope: [GMAIL_READONLY_SCOPE],
+    scope: [GMAIL_READONLY_SCOPE, GMAIL_SEND_SCOPE],
   });
 
-  console.log("Opening your browser to grant read-only Gmail access…");
+  console.log("Opening your browser to grant read + send Gmail access…");
   console.log("If it doesn't open automatically, visit:\n");
   console.log(authUrl + "\n");
   openBrowser(authUrl);
