@@ -15,15 +15,10 @@
 
 ---
 
-## Remaining — blocked on user setup / external accounts
-
-These finish the "act on my behalf" features. They need things only the user can provide, so they're parked until then.
-
-### 1. Browser-extension email/LinkedIn integration (features A + B)
-- **Build:** extend the Phase-7 Chrome extension to (a) read the open Gmail tab as an immediate triage feed, and (b) **pre-fill** a LinkedIn DM / Gmail compose in the open tab for the user to click send.
-- **Constraint:** pre-fill + user-clicks-send only. Automated LinkedIn sending violates ToS and risks account bans regardless of mechanism — opt-in/explore only, never default.
-
 ## Shipped (2026-06-15, cont'd)
+- **Browser-extension Gmail triage + outreach pre-fill** — extended the Phase-7 Chrome extension (`extension/`, now v0.2.0):
+  - **Gmail triage**: on an open Gmail message, "Triage this email" reads sender/subject/body via `chrome.scripting.executeScript` (no new host permissions, `activeTab` only) and posts to the existing `POST /api/email/triage` with `apply: true` — same classifier/matcher as the background poller, auto-applies status when confident, otherwise surfaces in the dashboard's "Needs review" panel.
+  - **Outreach pre-fill**: "Fill compose / DM here" picks an application with a saved `outreach_draft` (now also returns `recruiter_email` from `/api/jobs`) and writes subject+body into an open Gmail compose box, or body into an open LinkedIn message box. Never sends — user reviews and clicks Send themselves. Fails closed (returns null/error) rather than overwriting a non-empty field or a draft in progress.
 - **Gmail send for outreach** — `src/lib/gmail.ts` adds `sendEmail()` + `GMAIL_SEND_SCOPE`. `POST /api/applications/[id]/outreach/send` sends the exact recipient/subject/body the client posts. Lab outreach panel now has editable To/Subject/Body fields and a **Send via Gmail** button gated by a `confirm()` dialog (recipient + subject shown) — no auto-send. On success, recipient is saved as `recruiter_email` on the application.
 - **Needs from user:** re-run `npm run connect-gmail` — the current refresh token is read-only (`gmail.readonly` only); the connect script now requests `gmail.readonly` + `gmail.send` together, and re-running upgrades the existing token (Google will show an extra consent screen for "send email"). Then update `GOOGLE_REFRESH_TOKEN` in `.env.local` with the new value and restart the dev server.
 - **LanguageTool grammar pass** — `src/lib/language-tool.ts` calls LanguageTool's public API (`api.languagetool.org`) and auto-applies high-confidence TYPOS/GRAMMAR/PUNCTUATION/CASING/TYPOGRAPHY fixes. Only prose is sent: resume `summary` + every `experience`/`projects`/`activities` bullet (`correctResumeGrammar`, used in the rewrite pipeline step), and the outreach email `body` only (`correctGrammar`, used in outreach generation). Contact info, names, dates, company/school names, the email subject, and skills/certifications/etc. are never sent to LanguageTool. Runs after `reviewWritingStyle()` and before the final `sanitizeDeep()` em-dash backstop. Verified live against the real API (fixed "recieve"→"receive", "engineer's"→"engineers", "it's"→"its", sentence-start casing).

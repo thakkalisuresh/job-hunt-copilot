@@ -42,8 +42,11 @@ Added a "Needs review" panel to the dashboard (`src/app/page.tsx`):
 ## Email-triage matching — role title weighted up
 `matchApplication` in `src/lib/email-triage.ts` now scores a role-title match in the email body as +2 (was +1), same as a company-name match. Rationale: ATS senders (Greenhouse, Workday, Lever) rarely match the company's domain, but their templates almost always restate both the company and the role — so company+title in body now scores 4 (confidently auto-applies), while a title-only match scores 2 (stays in the review queue, avoiding ambiguity across same-titled roles at different companies). Verified with a scenario script; pushed as `18f7ff4`.
 
+## Browser extension — Gmail triage + outreach pre-fill — DONE
+`extension/` (v0.2.0): "Triage this email" reads the open Gmail message's sender/subject/body (DOM scrape via `activeTab`/`scripting`, no new permissions) and posts to `POST /api/email/triage` with `apply: true` — same classifier as the poller, auto-applies when confident, else shows up in "Needs review". "Fill compose / DM here" writes a saved outreach draft's subject/body into an open Gmail compose box or LinkedIn message box (`/api/jobs` now also returns `recruiter_email`). Never sends/submits. `npm run build` + `npm run lint` clean.
+
 ### What's left — next backlog items
-1. Browser-extension Gmail/LinkedIn feed (BACKLOG item 1) → Gmail send for outreach (BACKLOG item 2).
+None currently queued — all BACKLOG items shipped. Open question: confirm OAuth consent screen is "In production" (✅ confirmed by user 2026-06-15 via Cloud Console — "back to testing" button shown, meaning it's currently published).
 
 ## Launchd schedules — ACTIVE
 Both `com.jobhuntcopilot.pollgmail` (every 30 min) and `com.jobhuntcopilot.refresh` (daily 08:00) are loaded and running (`launchctl list | grep jobhuntcopilot`). poll-gmail has already completed multiple clean runs; refresh-feed completed its first run (50 jobs added, 47/50 enriched — 3 hit a transient Anthropic 429 rate limit, harmless, will retry next run). The "Load failed: 5: Input/output error" message from `launchctl load` on modern macOS is cosmetic — the job loads fine despite it.

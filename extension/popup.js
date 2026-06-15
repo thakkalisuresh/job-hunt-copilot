@@ -239,3 +239,267 @@ document.getElementById("markApplied").addEventListener("click", async () => {
 });
 
 loadApplications();
+
+// --- Gmail email triage ---
+
+/**
+ * Injected into a Gmail tab. Reads the currently-open thread's most recent
+ * message: sender, subject, and body text. Returns null if no message looks
+ * open (e.g. on the inbox list view).
+ */
+function extractGmailEmail() {
+  const subjectEl = document.querySelector("h2.hP");
+  const subject = subjectEl ? subjectEl.textContent.trim() : "";
+
+  const senderEls = document.querySelectorAll("span.gD[email], span[email]");
+  let from = "";
+  if (senderEls.length) {
+    const last = senderEls[senderEls.length - 1];
+    from = last.getAttribute("email") || last.textContent.trim();
+  }
+
+  const bodyEls = document.querySelectorAll("div.a3s");
+  let body = "";
+  if (bodyEls.length) {
+    body = (bodyEls[bodyEls.length - 1].innerText || "").trim();
+  }
+
+  if (!subject && !body) return null;
+  return { from, subject, body };
+}
+
+async function detectTabHost() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let host = "";
+  try {
+    host = tab.url ? new URL(tab.url).hostname : "";
+  } catch {
+    host = "";
+  }
+  return { tab, host };
+}
+
+(async () => {
+  const { host } = await detectTabHost();
+  if (host === "mail.google.com") {
+    document.getElementById("gmailTriageRow").style.display = "";
+  }
+})();
+
+document.getElementById("triageEmail").addEventListener("click", async () => {
+  setStatus("Reading the open email…");
+  const { tab, host } = await detectTabHost();
+  if (host !== "mail.google.com") {
+    setStatus("Open an email in Gmail first.", "err");
+    return;
+  }
+
+  let email;
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: extractGmailEmail,
+    });
+    email = result;
+  } catch {
+    setStatus("Couldn't read this Gmail page.", "err");
+    return;
+  }
+
+  if (!email) {
+    setStatus("No open email found. Open a message in the thread view.", "err");
+    return;
+  }
+
+  setStatus("Classifying…");
+  try {
+    const res = await fetch(`${API}/api/email/triage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...email, apply: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setStatus(data.error || "Triage failed.", "err");
+      return;
+    }
+
+    const { classification, match, suggestedStatus, applied } = data;
+    let line = `${classification.category} (${classification.confidence} confidence)`;
+    if (match) {
+      const jobsRes = await fetch(`${API}/api/jobs`);
+      const jobs = (await jobsRes.json()).jobs || [];
+      const job = jobs.find((j) => j.application_id === match.applicationId);
+      if (job) line += `\nMatched: ${job.title} — ${job.company}`;
+    }
+    if (applied) {
+      line += `\nApplied status: ${suggestedStatus}`;
+    } else if (suggestedStatus) {
+      line += `\nSuggested status: ${suggestedStatus} (sent to Needs Review on the dashboard)`;
+    } else {
+      line += "\nNo tracker change suggested.";
+    }
+    setStatus(line, applied ? "ok" : "");
+  } catch {
+    setStatus("App not reachable.", "err");
+  }
+});
+
+// --- Outreach pre-fill ---
+
+/**
+ * Injected into a Gmail compose window. Fills the subject and body of the
+ * currently-open compose box (and "To" if empty). Never clicks send.
+ */
+function fillGmailCompose({ to, subject, body }) {
+  function textToHtml(text) {
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return escaped.split("\n").join("<br>");
+  }
+
+  function setInputValue(el, value) {
+    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  const result = { subject: false, body: false, to: false };
+
+  const subjectEl = document.querySelector('input[name="subjectbox"]');
+  if (subject && subjectEl && !subjectEl.value) {
+    setInputValue(subjectEl, subject);
+    result.subject = true;
+  }
+
+  const bodyEl = document.querySelector(
+    'div[aria-label="Message Body"][contenteditable="true"], div[g_editable="true"][role="textbox"]'
+  );
+  if (body && bodyEl && !bodyEl.textContent.trim()) {
+    bodyEl.focus();
+    bodyEl.innerHTML = textToHtml(body);
+    bodyEl.dispatchEvent(new Event("input", { bubbles: true }));
+    result.body = true;
+  }
+
+  if (to) {
+    const toEl = document.querySelector('textarea[name="to"], input[name="to"], input[aria-label^="To"]');
+    if (toEl && !toEl.value) {
+      setInputValue(toEl, to);
+      result.to = true;
+    }
+  }
+
+  if (!result.subject && !result.body && !result.to) return null;
+  return result;
+}
+
+/**
+ * Injected into a LinkedIn messaging tab. Fills the active message compose
+ * box with the outreach body. Never clicks send.
+ */
+function fillLinkedInMessage({ body }) {
+  const el = document.querySelector(
+    'div.msg-form__contenteditable[contenteditable="true"], div[role="textbox"][contenteditable="true"]'
+  );
+  if (!el) return null;
+  if (el.textContent.trim()) return null; // don't overwrite a draft in progress
+
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  el.focus();
+  el.innerHTML = escaped.split("\n").join("<br>");
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return { body: true };
+}
+
+async function loadOutreachApplications() {
+  const sel = document.getElementById("outreachSelect");
+  try {
+    const res = await fetch(`${API}/api/jobs`);
+    const jobs = (await res.json()).jobs || [];
+    const withDraft = jobs.filter((j) => j.outreach_draft);
+    if (withDraft.length === 0) {
+      sel.innerHTML = '<option value="">No outreach drafts yet</option>';
+      return;
+    }
+    sel.innerHTML = withDraft
+      .map((j) => `<option value="${j.application_id}">${j.title} — ${j.company}</option>`)
+      .join("");
+    document.getElementById("fillOutreach").disabled = false;
+  } catch {
+    sel.innerHTML = '<option value="">App not reachable</option>';
+  }
+}
+
+document.getElementById("fillOutreach").addEventListener("click", async () => {
+  const id = document.getElementById("outreachSelect").value;
+  if (!id) return;
+
+  const { tab, host } = await detectTabHost();
+  const isGmail = host === "mail.google.com";
+  const isLinkedIn = host.endsWith("linkedin.com");
+  if (!isGmail && !isLinkedIn) {
+    setStatus("Open a Gmail compose window or a LinkedIn message thread first.", "err");
+    return;
+  }
+
+  setStatus("Loading outreach draft…");
+  let job;
+  try {
+    const res = await fetch(`${API}/api/jobs`);
+    const jobs = (await res.json()).jobs || [];
+    job = jobs.find((j) => String(j.application_id) === String(id));
+  } catch {
+    setStatus("App not reachable.", "err");
+    return;
+  }
+  if (!job || !job.outreach_draft) {
+    setStatus("No outreach draft for this application.", "err");
+    return;
+  }
+
+  const draft = JSON.parse(job.outreach_draft);
+
+  try {
+    if (isGmail) {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: fillGmailCompose,
+        args: [{ to: job.recruiter_email || "", subject: draft.subject || "", body: draft.body || "" }],
+      });
+      if (!result) {
+        setStatus("Open a compose/reply window with empty subject and body first.", "err");
+        return;
+      }
+      const filled = [
+        result.to && "To",
+        result.subject && "Subject",
+        result.body && "Body",
+      ].filter(Boolean);
+      setStatus(`Filled ${filled.join(", ")}. Review, then send it yourself.`, "ok");
+    } else {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: fillLinkedInMessage,
+        args: [{ body: draft.body || "" }],
+      });
+      if (!result) {
+        setStatus("Open an empty LinkedIn message box first.", "err");
+        return;
+      }
+      setStatus("Filled the message. Review, then send it yourself.", "ok");
+    }
+  } catch {
+    setStatus("Couldn't fill this page.", "err");
+  }
+});
+
+loadOutreachApplications();

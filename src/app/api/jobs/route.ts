@@ -15,6 +15,7 @@ export interface JobWithApplication {
   status: string;
   resume_version_id: number | null;
   outreach_draft: string | null;
+  recruiter_email: string | null;
   notes: string | null;
   /** Lines the tailored resume runs past page 1 (0 = fits, or no tailored version yet). */
   education_overflow_lines: number;
@@ -25,7 +26,8 @@ export async function GET() {
   const rows = db
     .prepare(
       `SELECT j.id, j.company, j.title, j.location, j.jd_text, j.url, j.created_at,
-              a.id as application_id, a.status, a.resume_version_id, a.outreach_draft, a.notes
+              a.id as application_id, a.status, a.resume_version_id, a.outreach_draft,
+              a.recruiter_email, a.notes
        FROM jobs j
        JOIN applications a ON a.job_id = j.id
        ORDER BY j.created_at DESC`

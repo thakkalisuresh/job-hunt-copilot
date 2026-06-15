@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Job Hunt Copilot — Autofill",
-  "version": "0.1.0",
-  "description": "Fills application forms from your Job Hunt Copilot profile. You review and submit every application yourself.",
+  "version": "0.2.0",
+  "description": "Fills application forms, triages open Gmail messages, and pre-fills outreach drafts from your Job Hunt Copilot profile. You review and click send/submit yourself.",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": ["http://localhost:3000/*"],
   "action": {
