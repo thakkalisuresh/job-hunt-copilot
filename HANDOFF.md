@@ -1,7 +1,15 @@
 # Session hand-off (2026-06-15)
 
 ## Where we are
-Building **Job Hunt Copilot** at `~/Downloads/Claude/Projects/job-hunt-copilot` (Next.js 16 / React 19 / TS / Tailwind, `better-sqlite3` at `data/app.db`). All 7 original phases are built. Recent work: resume-template polish, email triage core, and now the **Gmail connector**.
+Building **Job Hunt Copilot** at `~/Downloads/Claude/Projects/job-hunt-copilot` (Next.js 16 / React 19 / TS / Tailwind, `better-sqlite3` at `data/app.db`). All 7 original phases are built. Recent work: resume-template polish, email triage core, the **Gmail connector**, **Gmail send for outreach**, and a shared **writing style guide**.
+
+## Writing style guide — DONE
+`src/lib/style-guide.ts` is the single source of truth for resume/outreach tone, used by both the XYZ Rewriter prompt and the outreach email prompt:
+- `BANNED_PHRASES` — ~35 AI-cliché words/phrases ("synergy", "leverage", "I am writing to express my interest", "in conclusion", etc.)
+- `STYLE_RULES` — plain American English, active voice, no exclamation points, **no em dashes ever** (en dashes are fine — user confirmed), avoid formulaic transitions/rule-of-three/robotic symmetry, contractions OK.
+- `sanitizeDeep()` — mechanical backstop that strips any em dash (`—` or `--`) from every string in the generated JSON, regardless of prompt compliance.
+- `reviewWritingStyle()` — second LLM pass that re-reads the generated tailored resume / outreach draft against `STYLE_RULES` and fixes violations (facts/structure preserved), falling back to the original on failure. Runs before `sanitizeDeep()` in both the rewrite pipeline step (`pipeline/route.ts`) and outreach generation (`outreach/route.ts`).
+- Verified end-to-end on a real application: regenerated outreach draft had no em dashes, natural contractions, no banned phrases.
 
 ## Current task: Gmail connector — DONE, OAuth connected and verified live
 `.env.local` has real `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN`. `npm run poll-gmail` was run against the real inbox: found 6 messages (last 7 days), all correctly classified as `other` (Google account-setup emails, no tracker-relevant content yet), logged to `email_triage_log`, none auto-applied.
