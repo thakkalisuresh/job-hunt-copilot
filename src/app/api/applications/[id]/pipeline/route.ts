@@ -12,7 +12,7 @@ import {
   RewriterResult,
   InterviewResult,
 } from "@/lib/pipeline";
-import { sanitizeDeep } from "@/lib/style-guide";
+import { sanitizeDeep, reviewWritingStyle } from "@/lib/style-guide";
 
 interface ApplicationRow {
   id: number;
@@ -200,9 +200,10 @@ export async function POST(
     );
   }
 
-  // Defense-in-depth: strip any em dashes from generated resume content,
-  // regardless of how well the model followed STYLE_RULES.
+  // Second-pass style review + defense-in-depth em-dash stripping, regardless
+  // of how well the model followed STYLE_RULES the first time.
   if (runStep === "rewrite") {
+    result = await reviewWritingStyle("tailored resume (summaryOfChanges, bulletDiffs, tailoredResume)", result);
     result = sanitizeDeep(result);
   }
 

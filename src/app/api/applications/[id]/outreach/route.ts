@@ -4,7 +4,7 @@ import { completeJson } from "@/lib/llm";
 import { ResumeData, EMPTY_RESUME } from "@/lib/resume";
 import { ProfileData, EMPTY_PROFILE } from "@/lib/profile";
 import { outreachPrompt, buildMailto, OutreachDraft } from "@/lib/outreach";
-import { sanitizeDeep } from "@/lib/style-guide";
+import { sanitizeDeep, reviewWritingStyle } from "@/lib/style-guide";
 
 interface AppRow {
   id: number;
@@ -72,11 +72,10 @@ export async function POST(
 
   let draft: OutreachDraft;
   try {
-    draft = sanitizeDeep(
-      await completeJson<OutreachDraft>(
-        outreachPrompt(resume, job.jd_text, job.company, job.title, profile)
-      )
+    draft = await completeJson<OutreachDraft>(
+      outreachPrompt(resume, job.jd_text, job.company, job.title, profile)
     );
+    draft = sanitizeDeep(await reviewWritingStyle("outreach email (subject + body)", draft));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Outreach generation failed" },
