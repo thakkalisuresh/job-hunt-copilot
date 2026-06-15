@@ -13,6 +13,7 @@ import {
   InterviewResult,
 } from "@/lib/pipeline";
 import { sanitizeDeep, reviewWritingStyle } from "@/lib/style-guide";
+import { correctResumeGrammar } from "@/lib/language-tool";
 
 interface ApplicationRow {
   id: number;
@@ -200,11 +201,15 @@ export async function POST(
     );
   }
 
-  // Second-pass style review + defense-in-depth em-dash stripping, regardless
-  // of how well the model followed STYLE_RULES the first time.
+  // Second-pass style review, LanguageTool grammar check on the resume prose
+  // (summary + bullets only, never names/dates/companies), then
+  // defense-in-depth em-dash stripping, regardless of how well the model
+  // followed STYLE_RULES the first time.
   if (runStep === "rewrite") {
     result = await reviewWritingStyle("tailored resume (summaryOfChanges, bulletDiffs, tailoredResume)", result);
-    result = sanitizeDeep(result);
+    const rewriteResult = result as RewriterResult;
+    rewriteResult.tailoredResume = await correctResumeGrammar(rewriteResult.tailoredResume);
+    result = sanitizeDeep(rewriteResult);
   }
 
   db.prepare(

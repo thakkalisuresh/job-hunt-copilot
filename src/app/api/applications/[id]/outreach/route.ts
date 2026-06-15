@@ -5,6 +5,7 @@ import { ResumeData, EMPTY_RESUME } from "@/lib/resume";
 import { ProfileData, EMPTY_PROFILE } from "@/lib/profile";
 import { outreachPrompt, buildMailto, OutreachDraft } from "@/lib/outreach";
 import { sanitizeDeep, reviewWritingStyle } from "@/lib/style-guide";
+import { correctGrammar } from "@/lib/language-tool";
 
 interface AppRow {
   id: number;
@@ -75,7 +76,11 @@ export async function POST(
     draft = await completeJson<OutreachDraft>(
       outreachPrompt(resume, job.jd_text, job.company, job.title, profile)
     );
-    draft = sanitizeDeep(await reviewWritingStyle("outreach email (subject + body)", draft));
+    draft = await reviewWritingStyle("outreach email (subject + body)", draft);
+    // LanguageTool grammar check on the body only (prose). Subject and any
+    // contact info are never sent to LanguageTool.
+    draft.body = await correctGrammar(draft.body);
+    draft = sanitizeDeep(draft);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Outreach generation failed" },
