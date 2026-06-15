@@ -1,4 +1,5 @@
 import { ResumeData } from "./resume";
+import { STYLE_RULES } from "./style-guide";
 
 export const PIPELINE_STEPS = [
   "diagnose",
@@ -101,6 +102,8 @@ Return ONLY a JSON object with this exact shape:
 
 export function rewriterPrompt(): string {
   return `Step 3 - XYZ Rewriter: Using the diagnosis and keyword gaps identified above, rewrite the resume's experience bullets using the XYZ formula ("Accomplished [X] as measured by [Z], by doing [Y]"). Incorporate the missing keywords from step 2 only where they truthfully fit the candidate's existing experience — do not invent employers, titles, technologies, or metrics that weren't implied by the original resume. If a bullet has no number/result, keep it qualitative but still sharpen the action and impact language. Keep the same number of experience entries and roughly the same number of bullets per role. In every rewritten bullet, wrap the key quantified result/metric in **double asterisks** so it renders bold (e.g. "**42% faster**", "**$1.2M saved**") — bold only the metric phrase, not the whole sentence.
+
+${STYLE_RULES}
 
 Return ONLY a JSON object with this exact shape:
 {

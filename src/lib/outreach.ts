@@ -1,5 +1,6 @@
 import { ResumeData } from "./resume";
 import { ProfileData } from "./profile";
+import { STYLE_RULES } from "./style-guide";
 
 export interface OutreachDraft {
   subject: string;
@@ -15,7 +16,9 @@ export function outreachPrompt(
 ): string {
   const name = resume.contact?.name || profile?.targetRole || "the candidate";
   const links = (resume.contact?.links || []).join(", ");
-  return `Write a short, personalized cold outreach email from a job seeker to a recruiter or hiring manager about a specific role. Keep it concise (under ~150 words), specific, and human — reference 1-2 concrete, relevant accomplishments from the resume that map to the job. No fluff, no buzzword salad, no "I am writing to express my interest".
+  return `Write a short, personalized cold outreach email from a job seeker to a recruiter or hiring manager about a specific role. Keep it concise (under ~150 words), specific, and human — reference 1-2 concrete, relevant accomplishments from the resume that map to the job.
+
+${STYLE_RULES}
 
 Candidate name: ${name}
 ${links ? `Candidate links: ${links}` : ""}
