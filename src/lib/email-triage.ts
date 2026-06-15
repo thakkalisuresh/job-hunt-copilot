@@ -59,7 +59,10 @@ export function matchApplication(
     let score = 0;
     if (compToken && domain.includes(compToken)) score += 3; // strong: sender domain
     if (hay.includes(company)) score += 2; // company name anywhere
-    if (app.title && hay.includes(app.title.toLowerCase())) score += 1; // role title
+    // role title carries as much signal as the company name: ATS senders
+    // (greenhouse-mail.io, myworkday.com, lever.co...) rarely match the
+    // company's domain, but their templates almost always restate the role.
+    if (app.title && hay.includes(app.title.toLowerCase())) score += 2;
     if (score > 0 && (!best || score > best.score)) {
       best = { applicationId: app.id, score };
     }
