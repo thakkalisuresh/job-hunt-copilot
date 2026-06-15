@@ -12,6 +12,7 @@ import {
   RewriterResult,
   InterviewResult,
 } from "@/lib/pipeline";
+import { sanitizeDeep } from "@/lib/style-guide";
 
 interface ApplicationRow {
   id: number;
@@ -197,6 +198,12 @@ export async function POST(
       { error: "Claude returned a response that could not be parsed as JSON", raw: responseText },
       { status: 502 }
     );
+  }
+
+  // Defense-in-depth: strip any em dashes from generated resume content,
+  // regardless of how well the model followed STYLE_RULES.
+  if (runStep === "rewrite") {
+    result = sanitizeDeep(result);
   }
 
   db.prepare(
