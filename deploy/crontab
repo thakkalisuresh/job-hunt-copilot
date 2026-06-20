@@ -1,0 +1,12 @@
+# supercronic schedule — mirrors the local launchd jobs.
+# Format: minute hour day-of-month month day-of-week  command
+# Times are UTC inside the container.
+
+# Refresh the job feed once a day (15:00 UTC ~= 08:00 PT).
+0 15 * * *      cd /app && npm run refresh-feed
+
+# Poll Gmail for recruiter/HR mail every 30 minutes.
+*/30 * * * *    cd /app && npm run poll-gmail
+
+# Auto-tailor newly saved high-fit applications every 30 minutes.
+*/30 * * * *    cd /app && npm run auto-tailor

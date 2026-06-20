@@ -20,9 +20,20 @@ const AUTO_SINGLE_SUGGESTION_CATEGORIES = new Set(["GRAMMAR", "PUNCTUATION", "CA
  * high-confidence single-suggestion corrections (typos, grammar, punctuation,
  * casing). Style-only suggestions are left alone. Falls back to the original
  * text on any error so a grammar check never blocks generation.
+ *
+ * `protectedTerms` (e.g. the candidate's name, company name) are never
+ * corrected even if LanguageTool flags them as typos. LT regularly
+ * "fixes" unfamiliar proper nouns (e.g. "Sabarish" -> "Safaris",
+ * "Brightwave" -> "Bright wave"), which would corrupt an outbound email.
  */
-export async function correctGrammar(text: string): Promise<string> {
+export async function correctGrammar(text: string, protectedTerms: string[] = []): Promise<string> {
   if (!text.trim()) return text;
+  const protectedWords = new Set(
+    protectedTerms
+      .flatMap((term) => term.split(/\s+/))
+      .filter(Boolean)
+      .map((w) => w.toLowerCase())
+  );
   try {
     const res = await fetch(LT_ENDPOINT, {
       method: "POST",
@@ -35,6 +46,8 @@ export async function correctGrammar(text: string): Promise<string> {
       .filter((m) => {
         const category = m.rule?.category?.id;
         if (!m.replacements?.length) return false;
+        const original = text.slice(m.offset, m.offset + m.length).toLowerCase();
+        if (protectedWords.has(original)) return false;
         if (AUTO_TOP_SUGGESTION_CATEGORIES.has(category)) return true;
         return AUTO_SINGLE_SUGGESTION_CATEGORIES.has(category) && m.replacements.length === 1;
       })
@@ -57,10 +70,10 @@ const BATCH_SEP = "\n<<<LT_SPLIT>>>\n";
  * a single API call, preserving their boundaries. Falls back to the original
  * strings if anything looks off.
  */
-async function correctGrammarBatch(items: string[]): Promise<string[]> {
+async function correctGrammarBatch(items: string[], protectedTerms: string[] = []): Promise<string[]> {
   if (items.length === 0 || items.every((s) => !s.trim())) return items;
   const joined = items.join(BATCH_SEP);
-  const corrected = await correctGrammar(joined);
+  const corrected = await correctGrammar(joined, protectedTerms);
   const parts = corrected.split(BATCH_SEP);
   if (parts.length !== items.length) return items;
   return parts;
@@ -73,6 +86,13 @@ async function correctGrammarBatch(items: string[]): Promise<string[]> {
  * untouched and never sent to LanguageTool.
  */
 export async function correctResumeGrammar(resume: ResumeData): Promise<ResumeData> {
+  const protectedTerms = [
+    resume.contact?.name,
+    ...resume.experience.map((exp) => exp.company),
+    ...resume.experience.map((exp) => exp.title),
+    ...resume.education.map((edu) => edu.school),
+  ].filter((s): s is string => Boolean(s));
+
   const prose: string[] = [resume.summary ?? ""];
   const positions: (
     | { kind: "summary" }
@@ -100,7 +120,7 @@ export async function correctResumeGrammar(resume: ResumeData): Promise<ResumeDa
     })
   );
 
-  const corrected = await correctGrammarBatch(prose);
+  const corrected = await correctGrammarBatch(prose, protectedTerms);
 
   const result: ResumeData = {
     ...resume,

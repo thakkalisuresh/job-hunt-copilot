@@ -16,6 +16,17 @@ export interface NormalizedJob {
 export type SponsorshipTag = "known_sponsor" | "likely" | "unclear" | "no";
 export type SeniorityTag = "junior" | "mid" | "senior" | "staff+";
 
+/** Extended job type for rows that originate from the open-jobs dataset. */
+export interface OpenJobsJob extends NormalizedJob {
+  openJobsId: string;
+  skillsJson: string[] | null;
+  companySummary: string | null;
+  industry: string | null;
+  jobLevel: string | null;    // open-jobs level enum (Entry/Mid/Senior/Manager/Director/…)
+  jobFunction: string | null; // "hr" | "engineering" | …
+  embedScore: number | null;
+}
+
 export interface JobEnrichment {
   sponsorshipTag: SponsorshipTag;
   seniorityTag: SeniorityTag;

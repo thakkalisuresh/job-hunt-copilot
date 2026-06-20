@@ -6,12 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "serve": "next start -H 0.0.0.0 -p 3000",
+    "install-server": "tsx scripts/install-server.ts",
     "lint": "eslint",
     "aggregate-lca": "tsx scripts/aggregate-lca.ts",
     "refresh-feed": "tsx scripts/refresh-feed.ts",
+    "enrich-missing": "tsx scripts/enrich-missing.ts",
     "install-schedule": "tsx scripts/install-schedule.ts",
     "connect-gmail": "tsx scripts/connect-gmail.ts",
-    "poll-gmail": "tsx scripts/poll-gmail.ts"
+    "poll-gmail": "tsx scripts/poll-gmail.ts",
+    "auto-tailor": "tsx scripts/auto-tailor.ts",
+    "refresh-open-jobs": "tsx scripts/refresh-open-jobs.ts",
+    "seed-open-jobs": "python3 scripts/import-open-jobs.py",
+    "embed-rerank": "python3 scripts/embed-rerank.py"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -23,6 +30,7 @@
     "googleapis": "^173.0.0",
     "mammoth": "^1.12.0",
     "next": "16.2.9",
+    "next-auth": "^5.0.0-beta.31",
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",
     "react": "19.2.4",

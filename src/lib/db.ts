@@ -45,6 +45,20 @@ function runMigrations(db: Database.Database) {
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url) WHERE url IS NOT NULL"
   );
 
+  // open-jobs extended fields
+  const jobCols2 = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
+  const hasJ = (n: string) => jobCols2.some((c) => c.name === n);
+  if (!hasJ("open_jobs_id"))    db.exec("ALTER TABLE jobs ADD COLUMN open_jobs_id TEXT");
+  if (!hasJ("skills_json"))     db.exec("ALTER TABLE jobs ADD COLUMN skills_json TEXT");
+  if (!hasJ("company_summary")) db.exec("ALTER TABLE jobs ADD COLUMN company_summary TEXT");
+  if (!hasJ("industry"))        db.exec("ALTER TABLE jobs ADD COLUMN industry TEXT");
+  if (!hasJ("job_level"))       db.exec("ALTER TABLE jobs ADD COLUMN job_level TEXT");
+  if (!hasJ("job_function"))    db.exec("ALTER TABLE jobs ADD COLUMN job_function TEXT");
+  if (!hasJ("embed_score"))     db.exec("ALTER TABLE jobs ADD COLUMN embed_score REAL");
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_jobs_open_jobs_id ON jobs(open_jobs_id) WHERE open_jobs_id IS NOT NULL"
+  );
+
   const triageColumns = db
     .prepare("PRAGMA table_info(email_triage_log)")
     .all() as { name: string }[];

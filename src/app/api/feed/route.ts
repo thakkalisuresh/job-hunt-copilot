@@ -18,6 +18,13 @@ export interface FeedJob {
   fit_summary: string | null;
   application_id: number | null;
   status: string | null;
+  // open-jobs enriched fields (null for non-open-jobs rows)
+  industry: string | null;
+  job_level: string | null;
+  job_function: string | null;
+  skills_json: string | null;
+  company_summary: string | null;
+  embed_score: number | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -68,12 +75,25 @@ export async function GET(request: NextRequest) {
     args.push(Number(maxYears));
   }
 
+  const jobLevel = sp.get("jobLevel");
+  if (jobLevel) {
+    where.push("j.job_level = ?");
+    args.push(jobLevel);
+  }
+  const jobFunction = sp.get("jobFunction");
+  if (jobFunction) {
+    where.push("j.job_function = ?");
+    args.push(jobFunction);
+  }
+
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
     .prepare(
       `SELECT j.id, j.source, j.company, j.title, j.location, j.remote_type,
               j.posted_date, j.url, j.salary_range, j.sponsorship_tag,
               j.seniority_tag, j.min_years, j.fit_score, j.fit_summary,
+              j.industry, j.job_level, j.job_function, j.skills_json, j.company_summary,
+              j.embed_score,
               a.id as application_id, a.status
        FROM jobs j
        LEFT JOIN applications a ON a.job_id = j.id

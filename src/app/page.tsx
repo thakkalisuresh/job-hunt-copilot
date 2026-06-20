@@ -14,12 +14,23 @@ const STATUS_LABELS: Record<string, string> = Object.fromEntries(
 
 type PageFit = { fitsOnePage: boolean; linesOver: number };
 
+/** Days since a sqlite `datetime('now')` UTC timestamp (no trailing "Z"). */
+function daysSince(timestamp: string): number {
+  const then = new Date(timestamp.includes("Z") ? timestamp : `${timestamp}Z`).getTime();
+  return Math.floor((Date.now() - then) / (1000 * 60 * 60 * 24));
+}
+
+const FOLLOWUP_AFTER_DAYS = 10;
+
 export default function TrackerPage() {
   const [jobs, setJobs] = useState<JobWithApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [masterFit, setMasterFit] = useState<PageFit | null>(null);
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
+  const [followupState, setFollowupState] = useState<
+    Record<number, "drafting" | "done" | "error">
+  >({});
 
   async function load() {
     const [jobsRes, resumeRes, reviewRes] = await Promise.all([
@@ -58,6 +69,14 @@ export default function TrackerPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
+
+  async function draftFollowup(applicationId: number) {
+    setFollowupState((prev) => ({ ...prev, [applicationId]: "drafting" }));
+    const res = await fetch(`/api/applications/${applicationId}/outreach/followup`, {
+      method: "POST",
+    });
+    setFollowupState((prev) => ({ ...prev, [applicationId]: res.ok ? "done" : "error" }));
+  }
 
   async function updateStatus(applicationId: number, status: string) {
     setJobs((prev) =>
@@ -159,6 +178,61 @@ export default function TrackerPage() {
           </div>
         </div>
       )}
+
+      {(() => {
+        const followups = jobs.filter(
+          (j) => j.status === "applied" && daysSince(j.updated_at) >= FOLLOWUP_AFTER_DAYS
+        );
+        if (followups.length === 0) return null;
+        return (
+          <div className="mb-6 rounded-lg border border-violet-200 bg-violet-50 p-4">
+            <h2 className="mb-3 text-sm font-semibold text-violet-900">
+              Follow-ups <span className="text-violet-500">({followups.length})</span>
+            </h2>
+            <div className="flex flex-col gap-2">
+              {followups.map((job) => {
+                const state = followupState[job.application_id];
+                return (
+                  <div
+                    key={job.application_id}
+                    className="flex flex-col gap-2 rounded-md border border-violet-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="text-sm">
+                      <div className="font-medium">
+                        {job.title} at {job.company}
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        Applied {daysSince(job.updated_at)} days ago, no reply yet
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {state === "done" ? (
+                        <Link
+                          href={`/lab/${job.application_id}`}
+                          className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
+                        >
+                          Review draft in Lab
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => draftFollowup(job.application_id)}
+                          disabled={state === "drafting"}
+                          className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                          {state === "drafting" ? "Drafting…" : "Draft follow-up"}
+                        </button>
+                      )}
+                      {state === "error" && (
+                        <span className="text-xs text-red-600">Failed, try again</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {showForm && (
         <AddJobForm

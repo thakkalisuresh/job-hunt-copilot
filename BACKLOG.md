@@ -1,5 +1,67 @@
 # Backlog
 
+## Shipped (2026-06-18, open-jobs dataset integration)
+Combined the app with **[elliottdehn/open-jobs](https://github.com/elliottdehn/open-jobs)** (CC0, 963K jobs, 16 ATS incl. Workday/Ashby/SmartRecruiters). **$0 recurring** — pure-Python streaming hull filter + the existing free heuristic scorer; no LLM calls in the import path. Details in HANDOFF "open-jobs dataset integration".
+- **`scripts/import-open-jobs.py`** — streams the parquet over HTTP (fsspec range reads, embeddings skipped), HR/US hull filter, maps ~34 pre-extracted fields → `jobs`, dedups + expires. Runs in `.venv-openjobs` (Py3.12). Flags: `--dry-run`, `--max-batches`, `--function`, `--country`, `--title-terms`.
+- **`scripts/refresh-open-jobs.ts`** (`npm run refresh-open-jobs`) — Python import → free heuristic enrich → optional Fly push (`OPEN_JOBS_PUSH_TO_FLY=1`).
+- **Schema:** 7 new `jobs` columns (`open_jobs_id, skills_json, company_summary, industry, job_level, job_function, embed_score`) + index. Feed API/UI surface industry badge, company tooltip, skills chips, precise level + `jobLevel`/`jobFunction` filters. auto-tailor dual threshold (82 for open-jobs). 6 AM local launchd plist.
+- **Semantic re-rank** — `scripts/embed-rerank.py` (`npm run embed-rerank`): embeds the master resume once (`text-embedding-3-small`, ~$0.0001) and cosine-scores vs each open-jobs row's pre-computed `jd_embedding` → `embed_score`, shown as an "emb NN" badge in the feed. Needs `OPENAI_API_KEY` (none set today → skips cleanly). Best run against a locally-downloaded parquet.
+- **Future (optional):** extend imports beyond HR (`--function engineering` etc.) once HR is validated; add an `OPENAI_API_KEY` and run `embed-rerank` for live semantic scores; optionally order the feed by `embed_score` when present.
+
+## In progress — host as a real website (Fly.io, keep SQLite)
+Plan: `~/.claude/plans/so-walk-me-through-mighty-charm.md`. Persistent container on Fly (not serverless — keeps better-sqlite3), Google sign-in, Student-Pack credits + free domain.
+- **Batch A — DONE**: Auth.js v5 Google sign-in (allowlist of BOTH `nair.sabarish97@gmail.com` + `sabarish.n26@gmail.com` via `ALLOWED_EMAILS`, JWT sessions so DB untouched) — `src/auth.ts`, `src/app/api/auth/[...nextauth]/route.ts`, `src/app/signin/page.tsx`, **sign-out button** in `src/app/layout.tsx`, **`/api/health`** liveness endpoint; route guard at `src/proxy.ts` (Next 16 renamed middleware→proxy; excludes `/api/auth`, `/api/cron`, `/api/health`, `/signin`); `Dockerfile` + `.dockerignore` + `deploy/crontab` + `deploy/entrypoint.sh` (supercronic) + `fly.toml` (volume mount + health check). Build/tsc/eslint clean; guard verified (unauth → /signin, health → 200).
+
+### Google OAuth client — DONE (created via Chrome extension, 2026-06-16)
+Created the **Web application** OAuth client `job-hunt-copilot-web` in GCP project `jobcoppilot` (had to switch the browser's active Google account from nair.sabarish97 to the project owner sabarish.n26 first). Redirect URI `http://localhost:3000/api/auth/callback/google`. `AUTH_GOOGLE_ID`/`AUTH_GOOGLE_SECRET` saved to `.env.local` (read exactly from the dialog DOM, not OCR). Pinned `AUTH_URL=http://localhost:3000` so the 0.0.0.0 bind doesn't leak into the redirect_uri. Consent screen is "In production"/External with basic scopes, so the app-level `ALLOWED_EMAILS` allowlist does the gating.
+**Verified end-to-end in the browser:** allowlisted `nair.sabarish97` → signed in, lands on Tracker, Sign-out button shows; non-allowlisted `sabarish.uw` → "Access Denied". Sign-out works.
+
+### Batch B — DEPLOYED & VERIFIED (2026-06-16)
+Live at **https://job-hunt-copilot.fly.dev/**. flyctl v0.4.59 installed (`~/.fly`, added to `.zshrc`); user authed as nair.sabarish97 + added a payment card. App `job-hunt-copilot` (org personal), volume `data` 1GB in **sjc** (Seattle `sea` is no longer a Fly region — updated `fly.toml`). 12 secrets imported from `.env.local` with `AUTH_URL=https://job-hunt-copilot.fly.dev`. Remote build (223 MB image), single machine, `/api/health` check.
+**Verified in prod:** `/api/health` 200, `/`→307→/signin, and **full Google sign-in works end-to-end** (allowlisted `nair.sabarish97` → Tracker dashboard, Sign-out shows). Added the prod redirect URI `https://job-hunt-copilot.fly.dev/api/auth/callback/google` to the `job-hunt-copilot-web` OAuth client via the extension.
+
+### REMAINING — Batch C
+1. **Seed the production DB:** the Fly volume started **empty**, so the live app has no master resume and no jobs yet (core features need the resume). Copy local `data/app.db` onto the volume: clean snapshot `/usr/bin/sqlite3 data/app.db ".backup /tmp/app.db"` → upload over `/app/data/app.db` → remove stale `-wal`/`-shm` → restart the machine. (Or seed fresh: re-upload resume via Setup; cron populates the feed.)
+2. **Cron check:** confirm supercronic fires `refresh-feed`/`poll-gmail`/`auto-tailor` in-container (or trigger `refresh-feed` once via `fly ssh console`).
+3. **Custom domain:** claim the free Student-Pack domain (Namecheap `.me`/`.tech`), `fly certs add <domain>`, add DNS, and add `https://<domain>/api/auth/callback/google` to the OAuth client.
+
+## $0 job-feed refresh — research (2026-06-16)
+The refresh has 3 cost surfaces; only enrichment actually costs anything today.
+- **Sources (fetch): already $0** except Apify. Greenhouse/Lever/RemoteOK/HackerNews = free public APIs; JSearch = RapidAPI free tier (500 req/mo; we use ~180); LinkedIn guest = free. **Apify is the only paid one** — free plan is $5 credits/mo, non-rolling, enough for a few runs but NOT a daily scrape. Keep `APIFY_TOKEN` unset to disable it ($0), or run it manually within the $5.
+- **Enrichment (fit scoring): the only recurring cost.** Three tiers in `enrichJob`:
+  1. Claude — paid (currently out of credits → auto-falls back to heuristic).
+  2. **Gemini free tier** — `LLM_PROVIDER=gemini` + free `GOOGLE_API_KEY`. CAVEAT (verified 2026-06-16 with the user's `AQ.Ab8…` key): free-tier quota is far lower than docs claim AND varies by key/project. This key: **gemini-2.5-flash = 20 req/DAY** (the only model with non-zero free quota; gemini-2.0-flash = 0, lite models 404). 20/day is fine for **daily incremental** refreshes (few new jobs/run) but CANNOT bulk-rescore 50 jobs in one day → the rest fall back to heuristic. `enrichJob` now retries 429/503 3× w/ backoff before falling back; `enrich-missing` has `ENRICH_DELAY_MS` throttle. For real bulk Gemini, use a standard `AIza…` AI Studio key (documented 1,500/day on 2.0-flash) or spread the backfill over days. Verified Gemini scoring IS better when it runs (HR Associate 88 vs flat-70).
+  3. **Offline heuristic** (`heuristic.ts`) — $0, no network, NO quota, always works. Cruder (flat-70 domain match) but the reliable $0 floor. **Currently the de-facto scorer** given the 20/day Gemini cap.
+- **Scheduling: already $0 marginal.** Fly supercronic runs inside the always-on web machine (no extra machine = no extra cost). Alternatives: GitHub Actions cron (2000 free min/mo private, unlimited public; 5-min min, recommend ≥15) hitting a protected `/api/cron/*` endpoint; or local launchd.
+- **Bottom line:** prod refresh is ALREADY $0 today (Claude fails → free heuristic). For *better* free quality, add a free Gemini key and set `LLM_PROVIDER=gemini`. Disable Apify (leave token empty) to stay $0.
+
+## To do
+- **Local LLM provider (Ollama) as a 4th enrichment tier** — add `LLM_PROVIDER=ollama` to the provider layer (`src/lib/providers/`, register in `src/lib/llm.ts` `PROVIDERS`) so enrichment can run a real model fully offline, slotting into the existing `enrichJob` chain *between* the cloud LLMs and the no-model heuristic fallback. Gives semantic scoring (nuances HR roles instead of the heuristic's flat 70) with no API cost or cloud dependency. Cost: user must install Ollama + pull a model (several GB); env quirk — no Homebrew, so install via the standalone macOS app or curl script. Default model e.g. `llama3.1` or `qwen2.5`; talk to the local server at `http://localhost:11434/api/chat`. Keep the heuristic as the final fallback when Ollama isn't running.
+
+## Shipped (2026-06-15, Anthropic-free enrichment)
+- **Gemini option**: `LLM_PROVIDER=gemini` + free `GOOGLE_API_KEY` runs enrichment at no cost, no code change (provider layer already supported it).
+- **Offline heuristic scorer** (`src/lib/jobs/heuristic.ts`, `enrichJobHeuristic`): zero-API fallback. Domain-driven — infers candidate domain(s) from experience titles and scores jobs by title-domain match (70%) + gated skill overlap (30%). Regex tags. Wired as automatic fallback in `enrichJob` on no-key OR provider error; DOL override shared via `applySponsorOverride`.
+- **No-JD enrichment**: dropped `jd_text IS NOT NULL` gate (`refresh.ts`, `enrich-missing.ts`) so title-only LinkedIn cards get scored.
+- **Verified**: all 50 feed jobs scored offline (Claude credits depleted → fallback exercised live); top 18 all HR roles at 70, eng/product/marketing at 0.
+
+## Shipped (2026-06-15, HR-relevant job sources)
+- **Curated Greenhouse/Lever lists** to verified-WA-office companies with real HR postings (`src/lib/jobs/sources.ts`): GH okta/tanium/brex/samsara/mongodb/stripe/thetradedesk/smartsheet, Lever highspot/rover/outreach. Each verified live (200 + WA HR role). Dropped databricks/airbnb/coinbase/figma/netflix/plaid.
+- **JSearch source** (`src/lib/jobs/jsearch.ts`) — RapidAPI aggregator (LinkedIn/Indeed/Glassdoor/ZipRecruiter), full JDs, free 500 req/mo, gated on `RAPIDAPI_KEY`. `JSEARCH_QUERIES` in sources.ts. Brings in Amazon/Boeing/Starbucks/Providence/Nordstrom HR roles that proprietary-ATS companies hide.
+- **LinkedIn guest scraper** (`src/lib/jobs/linkedin.ts`) — no key, card-level data, `ENABLE_LINKEDIN` + `LINKEDIN_QUERIES`. Both wired into `refresh.ts`.
+- **`npm run enrich-missing`** (`scripts/enrich-missing.ts`) — backfills fit scores for JD-bearing jobs that `refresh-feed` left unscored (it only enriches same-run inserts).
+- **Open**: Anthropic credits depleted → feed inserted but unscored. Top up, then `npm run enrich-missing`.
+
+## Shipped (2026-06-15, job feed location filter + first real run)
+- **`FEED_LOCATION_FILTER` env var** — pipe-separated geographic filter in `src/lib/jobs/sources.ts` + `refresh.ts`. Strips "Washington D.C." variants before matching to avoid false positives. Read at function-call time (not module init) so CLI scripts pick it up after `loadEnvFile()`. Set to WA-state terms in `.env.local`.
+- **First real data**: seed data wiped, feed refreshed, 50 WA-only jobs confirmed. Fit scores top at ~42 — next step is adding HR-relevant company sources.
+
+## Shipped (2026-06-15, automation suite)
+- **Auto-tailor on save** — `src/lib/auto-pipeline.ts` extracts the interactive pipeline/outreach logic (`runPipelineStep`, `generateOutreachDraft`, `autoTailorApplication`, `triggerInterviewPrep`) for reuse by background jobs. `scripts/auto-tailor.ts` (`npm run auto-tailor`) auto-runs Diagnose → Keywords → Rewrite → Outreach for any `saved`/`tailoring` application with no resume version yet and `fit_score >= AUTO_TAILOR_MIN_FIT` (default 70). Retry-safe (skips already-completed steps via `pipeline_runs`). Uses the Gemini background provider when available. Live-verified on real data (2 applications fully tailored).
+- **Follow-up reminders** — `POST /api/applications/[id]/outreach/followup` + new "Follow-ups" dashboard panel surfaces applications 10+ days since last update with no reply, with a one-click "Draft follow-up" → Lab review flow. New `followupPrompt` in `src/lib/outreach.ts`.
+- **Interview-prep auto-trigger** — `triggerInterviewPrep` runs the mock-interview-prep pipeline step automatically the moment a status flips to `interview_requested`, wired into `/api/email/triage`, `/api/email/triage/review/[id]` (confirm), and `scripts/poll-gmail.ts`.
+- **Bug fixes (shared with interactive Lab)**: Claude `max_tokens` 4096→8192 (fixed rewrite-step JSON truncation on large resumes); LanguageTool `protectedTerms` (stops LT "correcting" the candidate's name / company name in resumes and outreach emails).
+- **Not yet installed**: `scripts/install-schedule.ts` supports `auto-tailor` as a scheduled job (`npm run install-schedule -- auto-tailor [minutes]`) but the launchd plist hasn't been installed — user action, same pattern as poll-gmail.
+
 ## Shipped (2026-06-15)
 - **Gmail connector** — `scripts/connect-gmail.ts` (OAuth loopback handshake, `npm run connect-gmail`), `src/lib/gmail.ts` (read-only client), `scripts/poll-gmail.ts` (`npm run poll-gmail`: pulls recent mail, runs the existing email-triage logic, auto-applies when confident, logs everything to the new `email_triage_log` table). OAuth connected, app published, verified against the live inbox.
 - **Launchd scheduling for poll-gmail** — `scripts/install-schedule.ts` generates a `poll-gmail` plist (every 30 min, `StartInterval`) alongside the existing `refresh-feed` plist (daily). Both installed and confirmed running (`launchctl list`, logs in `data/poll-gmail.log` / `data/refresh.log`).

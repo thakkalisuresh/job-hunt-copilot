@@ -6,8 +6,9 @@ import { fetchLever } from "./lever";
 import { fetchRemoteOk } from "./remoteok";
 import { fetchHackerNews } from "./hackernews";
 import { fetchApify } from "./apify";
+import { fetchJSearch } from "./jsearch";
+import { fetchLinkedIn } from "./linkedin";
 import { enrichJob } from "./enrich";
-import { hasLlmKey } from "../llm";
 import {
   GREENHOUSE_BOARDS,
   LEVER_COMPANIES,
@@ -15,6 +16,9 @@ import {
   ENABLE_HACKERNEWS,
   APIFY_ACTORS,
   FEED_REFRESH_LIMIT,
+  JSEARCH_QUERIES,
+  LINKEDIN_QUERIES,
+  ENABLE_LINKEDIN,
 } from "./sources";
 
 export interface RefreshSummary {
@@ -39,6 +43,14 @@ async function gatherAll(): Promise<{ jobs: NormalizedJob[]; errors: string[] }>
     APIFY_ACTORS.forEach((cfg, i) =>
       tasks.push({ label: `apify:${cfg.actorId}#${i}`, run: () => fetchApify(cfg) })
     );
+  }
+  if (process.env.RAPIDAPI_KEY) {
+    for (const q of JSEARCH_QUERIES)
+      tasks.push({ label: `jsearch:${q}`, run: () => fetchJSearch(q) });
+  }
+  if (ENABLE_LINKEDIN) {
+    for (const q of LINKEDIN_QUERIES)
+      tasks.push({ label: `linkedin:${q.keywords}`, run: () => fetchLinkedIn(q.keywords, q.location) });
   }
 
   const jobs: NormalizedJob[] = [];
@@ -82,7 +94,23 @@ async function mapWithConcurrency<T, R>(
 export async function refreshFeed(): Promise<RefreshSummary> {
   const db = getDb();
   const { jobs, errors } = await gatherAll();
-  const capped = sortAndCap(jobs, FEED_REFRESH_LIMIT);
+  // Read at call time (not module init) so scripts that loadEnvFile() late still pick it up.
+  // Terms are pipe-separated (|) so terms containing commas (e.g. ", Washington") work correctly.
+  const locationTerms = process.env.FEED_LOCATION_FILTER
+    ? process.env.FEED_LOCATION_FILTER.split("|").map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const locationFiltered =
+    locationTerms.length === 0
+      ? jobs
+      : jobs.filter((j) => {
+          // Strip "Washington D.C." variants first so they don't false-positive match
+          // WA-state terms like ", Washington" or "Remote - Washington".
+          const loc = (j.location ?? "")
+            .toLowerCase()
+            .replace(/washington,?\s*d\.?c\.?/g, "");
+          return locationTerms.some((term) => loc.includes(term));
+        });
+  const capped = sortAndCap(locationFiltered, FEED_REFRESH_LIMIT);
 
   const findByUrl = db.prepare("SELECT id FROM jobs WHERE url = ?");
   const insert = db.prepare(
@@ -111,7 +139,9 @@ export async function refreshFeed(): Promise<RefreshSummary> {
   }
 
   let enriched = 0;
-  if (hasLlmKey() && insertedIds.length > 0) {
+  // Enrich whenever there are new jobs: enrichJob uses the LLM when a key is set
+  // and falls back to the offline heuristic scorer otherwise, so this runs either way.
+  if (insertedIds.length > 0) {
     const masterRow = db
       .prepare(
         "SELECT content_json FROM resumes WHERE is_master = 1 ORDER BY id DESC LIMIT 1"
@@ -141,8 +171,10 @@ export async function refreshFeed(): Promise<RefreshSummary> {
           url: string | null;
           salary_range: string | null;
         },
-      }))
-      .filter((j) => j.row.jd_text);
+      }));
+    // Note: jobs without a JD (e.g. LinkedIn card-only postings) are still
+    // enriched — the heuristic scores on title/domain and the LLM prompt handles
+    // a missing description, so title-only sources still get a fit signal.
 
     await mapWithConcurrency(toEnrich, 4, async ({ id, row }) => {
       try {

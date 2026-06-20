@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { auth, signOut } from "@/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,11 +19,12 @@ export const metadata: Metadata = {
   description: "Tailor resumes, practice interviews, and track applications.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
   return (
     <html
       lang="en"
@@ -43,6 +45,23 @@ export default function RootLayout({
             <Link href="/setup" className="text-sm text-zinc-600 hover:text-zinc-900">
               Setup
             </Link>
+            {session?.user ? (
+              <form
+                action={async () => {
+                  "use server";
+                  await signOut({ redirectTo: "/signin" });
+                }}
+                className="ml-auto"
+              >
+                <button
+                  type="submit"
+                  className="text-sm text-zinc-500 hover:text-zinc-900"
+                  title={session.user.email ?? undefined}
+                >
+                  Sign out
+                </button>
+              </form>
+            ) : null}
           </nav>
         </header>
         <main className="flex-1">{children}</main>

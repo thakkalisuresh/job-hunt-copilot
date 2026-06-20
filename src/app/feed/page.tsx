@@ -27,6 +27,7 @@ interface Filters {
   company: string;
   minFit: string;
   maxYears: string;
+  jobLevel: string;
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -38,6 +39,7 @@ const EMPTY_FILTERS: Filters = {
   company: "",
   minFit: "",
   maxYears: "",
+  jobLevel: "",
 };
 
 export default function FeedPage() {
@@ -132,7 +134,17 @@ export default function FeedPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-medium">{job.title}</div>
-                  <div className="text-sm text-zinc-600">{job.company}</div>
+                  <div className="text-sm text-zinc-600">
+                    {job.company}
+                    {job.company_summary && (
+                      <span
+                        className="ml-1 cursor-help text-zinc-400"
+                        title={job.company_summary}
+                      >
+                        ⓘ
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-zinc-400">
                     {job.location || "—"}
                     {job.posted_date &&
@@ -140,11 +152,21 @@ export default function FeedPage() {
                     {job.source && ` · ${job.source}`}
                   </div>
                 </div>
-                {job.fit_score != null && (
-                  <div className="shrink-0 rounded bg-zinc-900 px-2 py-1 text-xs font-semibold text-white">
-                    {job.fit_score}
-                  </div>
-                )}
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  {job.fit_score != null && (
+                    <div className="rounded bg-zinc-900 px-2 py-1 text-xs font-semibold text-white">
+                      {job.fit_score}
+                    </div>
+                  )}
+                  {job.embed_score != null && (
+                    <div
+                      className="rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500"
+                      title="Semantic similarity of this JD to your resume (text-embedding-3-small)"
+                    >
+                      emb {Math.round(job.embed_score)}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mt-2 flex flex-wrap gap-1">
@@ -155,11 +177,15 @@ export default function FeedPage() {
                     {SPONSORSHIP_LABELS[job.sponsorship_tag].label}
                   </span>
                 )}
-                {job.seniority_tag && (
+                {job.job_level ? (
+                  <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+                    {job.job_level}
+                  </span>
+                ) : job.seniority_tag ? (
                   <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
                     {SENIORITY_LABELS[job.seniority_tag] || job.seniority_tag}
                   </span>
-                )}
+                ) : null}
                 {job.min_years != null && (
                   <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
                     {job.min_years}+ yrs
@@ -175,11 +201,38 @@ export default function FeedPage() {
                     {job.salary_range}
                   </span>
                 )}
+                {job.industry && (
+                  <span className="rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">
+                    {job.industry}
+                  </span>
+                )}
               </div>
 
               {job.fit_summary && (
                 <p className="mt-2 text-xs text-zinc-500">{job.fit_summary}</p>
               )}
+
+              {job.skills_json && (() => {
+                try {
+                  const skills: string[] = JSON.parse(job.skills_json);
+                  if (!skills.length) return null;
+                  return (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {skills.slice(0, 8).map((s) => (
+                        <span
+                          key={s}
+                          className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-xs text-zinc-500"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                      {skills.length > 8 && (
+                        <span className="text-xs text-zinc-400">+{skills.length - 8} more</span>
+                      )}
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
 
               <div className="mt-3 flex items-center gap-3 text-xs">
                 {job.application_id ? (
@@ -293,6 +346,20 @@ function FilterBar({
         placeholder="Company"
         className={`${selectCls} w-32`}
       />
+      <select
+        value={filters.jobLevel}
+        onChange={(e) => set("jobLevel", e.target.value)}
+        className={selectCls}
+      >
+        <option value="">Any level</option>
+        <option value="Entry">Entry</option>
+        <option value="Mid">Mid</option>
+        <option value="Senior">Senior</option>
+        <option value="Lead">Lead</option>
+        <option value="Manager">Manager</option>
+        <option value="Director">Director</option>
+        <option value="VP">VP</option>
+      </select>
       <button
         onClick={() => setFilters(EMPTY_FILTERS)}
         className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50"

@@ -24,7 +24,7 @@ export const claudeProvider: LlmProvider = {
     const anthropic = getClient();
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system,
       messages,
     });

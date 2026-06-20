@@ -1,4 +1,5 @@
 import { completeJson } from "./llm";
+import { LlmProvider } from "./providers/types";
 
 /**
  * Shared writing-style constraints injected into prompts that generate
@@ -100,7 +101,11 @@ export function sanitizeDeep<T>(value: T): T {
  * original content if the review call fails or returns malformed JSON, so
  * a style nit never blocks generation.
  */
-export async function reviewWritingStyle<T>(label: string, content: T): Promise<T> {
+export async function reviewWritingStyle<T>(
+  label: string,
+  content: T,
+  provider?: LlmProvider
+): Promise<T> {
   const prompt = `You previously generated the following ${label}. Re-read it against these writing style rules and fix ONLY style-rule violations. Do not change facts, structure, JSON keys, array lengths, numbers, dates, or meaning otherwise.
 
 ${STYLE_RULES}
@@ -111,7 +116,7 @@ ${JSON.stringify(content, null, 2)}
 Return ONLY the corrected JSON, in the exact same shape as the input (same keys, same nesting, same array lengths). If there are no violations, return it unchanged.`;
 
   try {
-    return await completeJson<T>(prompt);
+    return await completeJson<T>(prompt, undefined, provider);
   } catch {
     return content;
   }

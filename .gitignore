@@ -49,3 +49,9 @@ next-env.d.ts
 
 # generated launchd plist (machine-specific paths)
 /scripts/*.plist
+
+# open-jobs import: python venv + cached parquet (21 GB)
+/.venv-openjobs/
+/.venv*/
+*.parquet
+*.parquet.part

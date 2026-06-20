@@ -1,0 +1,19 @@
+# Build fresh inside the image
+node_modules
+.next
+
+# Local-only data + secrets (DB comes from the mounted volume, secrets from Fly)
+data
+.env.local
+.env*.local
+
+# Local artifacts not needed in the image
+samples
+*.log
+.git
+.gitignore
+scripts/*.plist
+.claude
+README.md
+HANDOFF.md
+BACKLOG.md

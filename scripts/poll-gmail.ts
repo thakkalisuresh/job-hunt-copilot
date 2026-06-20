@@ -11,7 +11,7 @@
  * `npm run poll-gmail`, or on a schedule (see scripts/install-schedule.ts).
  */
 import { getDb } from "../src/lib/db";
-import { hasLlmKey } from "../src/lib/llm";
+import { hasLlmKey, getBackgroundProvider } from "../src/lib/llm";
 import { hasGmailCredentials, listMessageIds, getMessage } from "../src/lib/gmail";
 import {
   classifyEmail,
@@ -20,6 +20,7 @@ import {
   isConfident,
   MatchableApplication,
 } from "../src/lib/email-triage";
+import { triggerInterviewPrep } from "../src/lib/auto-pipeline";
 
 try {
   process.loadEnvFile(".env.local");
@@ -95,6 +96,16 @@ async function main() {
         updateStatus.run(suggestedStatus, match.applicationId);
         applied = true;
         autoApplied++;
+
+        if (suggestedStatus === "interview_requested") {
+          try {
+            await triggerInterviewPrep(db, match.applicationId, getBackgroundProvider());
+          } catch (err) {
+            errors.push(
+              `interview-prep for application ${match.applicationId}: ${err instanceof Error ? err.message : String(err)}`
+            );
+          }
+        }
       } else if (suggestedStatus) {
         flagged++;
       }

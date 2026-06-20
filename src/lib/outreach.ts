@@ -41,6 +41,36 @@ Return ONLY a JSON object with this exact shape:
 The body should be plain text with line breaks, signed with the candidate's name. Do not invent accomplishments not in the resume.`;
 }
 
+export function followupPrompt(
+  resume: ResumeData,
+  jdText: string,
+  company: string,
+  title: string,
+  profile: ProfileData | null,
+  daysSinceApplied: number
+): string {
+  const name = resume.contact?.name || profile?.targetRole || "the candidate";
+  return `Write a short, polite follow-up email from a job seeker to a recruiter or hiring manager, checking in on a job application that was submitted ${daysSinceApplied} days ago with no response yet. Keep it brief (under ~100 words) and friendly, reaffirm interest in the role, and offer to share any more information. Don't repeat the full pitch from the original application or restate every qualification.
+
+${STYLE_RULES}
+
+Candidate name: ${name}
+Role: ${title} at ${company}
+
+Job description:
+"""
+${jdText.slice(0, 2000)}
+"""
+
+Return ONLY a JSON object with this exact shape:
+{
+  "subject": string,
+  "body": string
+}
+
+The body should be plain text with line breaks, signed with the candidate's name.`;
+}
+
 /** Build a mailto: link the user's own mail client can open (nothing is sent). */
 export function buildMailto(draft: OutreachDraft, to?: string): string {
   const params = new URLSearchParams();

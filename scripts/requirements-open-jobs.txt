@@ -1,0 +1,13 @@
+# Dependencies for scripts/import-open-jobs.py (the open-jobs dataset importer).
+# Install into a Python 3.12 venv (system Python 3.14 has no pyarrow wheels yet):
+#
+#   python3.12 -m venv .venv-openjobs
+#   .venv-openjobs/bin/pip install -r scripts/requirements-open-jobs.txt
+#
+# The TS wrapper (scripts/refresh-open-jobs.ts) auto-detects .venv-openjobs/bin/python.
+pyarrow>=20
+fsspec>=2024.0
+aiohttp>=3.10
+# Only needed for the optional semantic re-rank (scripts/embed-rerank.py):
+numpy>=1.26
+openai>=1.40

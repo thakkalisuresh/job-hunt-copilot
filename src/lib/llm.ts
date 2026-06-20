@@ -31,15 +31,26 @@ export function hasLlmKey(): boolean {
 }
 
 /**
+ * Provider for unattended background jobs (auto-tailor, follow-up drafts,
+ * interview prep triggered from email triage): prefer Gemini's free tier so
+ * automation doesn't add to the paid Claude bill, falling back to whatever
+ * LLM_PROVIDER is configured if no Gemini key is set.
+ */
+export function getBackgroundProvider(): LlmProvider {
+  return geminiProvider.hasKey() ? geminiProvider : getProvider();
+}
+
+/**
  * Send a multi-turn conversation to the active provider and get the next
  * assistant message back. The caller owns the message history so multi-step
  * pipelines can share context, matching the "one chat, four prompts" design.
  */
 export async function chatComplete(
   messages: ChatMessage[],
-  system?: string
+  system?: string,
+  provider?: LlmProvider
 ): Promise<string> {
-  return getProvider().chat(messages, system);
+  return (provider ?? getProvider()).chat(messages, system);
 }
 
 /**
@@ -48,9 +59,10 @@ export async function chatComplete(
  */
 export async function completeJson<T>(
   prompt: string,
-  system?: string
+  system?: string,
+  provider?: LlmProvider
 ): Promise<T> {
-  const text = await chatComplete([{ role: "user", content: prompt }], system);
+  const text = await chatComplete([{ role: "user", content: prompt }], system, provider);
   return parseJson<T>(text);
 }
 

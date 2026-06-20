@@ -46,13 +46,20 @@ export function genericApifyMap(
     const v = item[k];
     return typeof v === "string" && v.trim() ? v.trim() : null;
   };
-  const title = str("title") || str("position") || str("jobTitle");
-  const company = str("company") || str("companyName") || str("employer");
+  // Field names vary by actor; cover the common job-board scrapers (incl. the
+  // Indeed/LinkedIn actors which use positionName / companyName / descriptionHTML).
+  const title = str("title") || str("position") || str("jobTitle") || str("positionName");
+  const company =
+    str("company") || str("companyName") || str("employer") || str("employerName");
   if (!title || !company) return null;
-  const location = str("location") || str("city");
+  const location = str("location") || str("city") || str("formattedLocation");
   const description =
-    str("description") || str("descriptionHtml") || str("jobDescription");
-  const posted = str("postedAt") || str("date") || str("publishedAt");
+    str("description") ||
+    str("descriptionHtml") ||
+    str("descriptionHTML") ||
+    str("jobDescription");
+  const posted =
+    str("postedAt") || str("date") || str("publishedAt") || str("postingDateParsed");
   return {
     source,
     company,

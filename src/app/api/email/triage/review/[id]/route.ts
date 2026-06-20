@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { APPLICATION_STATUSES } from "@/lib/statuses";
+import { getBackgroundProvider } from "@/lib/llm";
+import { triggerInterviewPrep } from "@/lib/auto-pipeline";
 
 export const runtime = "nodejs";
 
@@ -57,6 +59,14 @@ export async function PATCH(
       "UPDATE applications SET status = ?, updated_at = datetime('now') WHERE id = ?"
     ).run(row.suggested_status, row.application_id);
     db.prepare("UPDATE email_triage_log SET applied = 1 WHERE id = ?").run(row.id);
+
+    if (row.suggested_status === "interview_requested") {
+      try {
+        await triggerInterviewPrep(db, row.application_id, getBackgroundProvider());
+      } catch {
+        // Interview prep is best-effort; the status update above already succeeded.
+      }
+    }
   } else if (action === "dismiss") {
     db.prepare("UPDATE email_triage_log SET dismissed = 1 WHERE id = ?").run(row.id);
   } else {

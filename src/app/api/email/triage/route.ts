@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { hasLlmKey } from "@/lib/llm";
+import { hasLlmKey, getBackgroundProvider } from "@/lib/llm";
 import {
   classifyEmail,
   matchApplication,
@@ -8,6 +8,7 @@ import {
   isConfident,
   MatchableApplication,
 } from "@/lib/email-triage";
+import { triggerInterviewPrep } from "@/lib/auto-pipeline";
 
 export const runtime = "nodejs";
 
@@ -51,11 +52,24 @@ export async function POST(request: NextRequest) {
   const confident = isConfident(classification, match, suggestedStatus);
 
   let applied = false;
+  let interviewPrepTriggered = false;
   if (apply && confident && match && suggestedStatus) {
     db.prepare(
       "UPDATE applications SET status = ?, updated_at = datetime('now') WHERE id = ?"
     ).run(suggestedStatus, match.applicationId);
     applied = true;
+
+    if (suggestedStatus === "interview_requested") {
+      try {
+        interviewPrepTriggered = await triggerInterviewPrep(
+          db,
+          match.applicationId,
+          getBackgroundProvider()
+        );
+      } catch {
+        // Interview prep is best-effort; the status update above already succeeded.
+      }
+    }
   }
 
   return NextResponse.json({
@@ -64,5 +78,6 @@ export async function POST(request: NextRequest) {
     suggestedStatus,
     confident, // true → safe to auto-apply; false → send to the review queue
     applied,
+    interviewPrepTriggered,
   });
 }

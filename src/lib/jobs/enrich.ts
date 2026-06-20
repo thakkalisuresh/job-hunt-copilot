@@ -2,6 +2,7 @@ import { completeJson, hasLlmKey } from "../llm";
 import { ResumeData } from "../resume";
 import { JobEnrichment, NormalizedJob } from "./types";
 import { lookupSponsor } from "./sponsor";
+import { enrichJobHeuristic } from "./heuristic";
 
 interface RawEnrichment {
   sponsorshipTag: string;
@@ -53,32 +54,66 @@ Guidance:
 - fitSummary: one sentence on the fit (null if no resume).`;
 }
 
-/** Enrich one job via the LLM, layering in the DOL sponsor lookup. */
+/** Apply the DOL LCA known-sponsor override to any enrichment result. */
+function applySponsorOverride(enrichment: JobEnrichment, company: string): JobEnrichment {
+  if (enrichment.sponsorshipTag !== "no" && lookupSponsor(company)) {
+    return { ...enrichment, sponsorshipTag: "known_sponsor" };
+  }
+  return enrichment;
+}
+
+/**
+ * Enrich one job, layering in the DOL sponsor lookup.
+ *
+ * Uses the configured LLM provider when a key is set; falls back to the offline
+ * heuristic scorer (`enrichJobHeuristic`) when no key is configured OR the
+ * provider call fails (rate limit / out of credits / parse error) so the feed
+ * always gets a fit signal without ever blocking on an external API.
+ */
 export async function enrichJob(
   job: NormalizedJob,
   resume: ResumeData | null
 ): Promise<JobEnrichment> {
-  const raw = await completeJson<RawEnrichment>(enrichmentPrompt(job, resume));
+  if (!hasLlmKey()) {
+    return applySponsorOverride(enrichJobHeuristic(job, resume), job.company);
+  }
 
-  let sponsorshipTag = SPONSORSHIP_VALUES.includes(raw.sponsorshipTag)
+  // Retry transient LLM failures (free-tier 429/503, occasional bad JSON) with
+  // backoff before falling back to the heuristic — otherwise one blip drops a
+  // job to the cruder flat-domain score even though the provider is healthy.
+  const prompt = enrichmentPrompt(job, resume);
+  let raw: RawEnrichment | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      raw = await completeJson<RawEnrichment>(prompt);
+      break;
+    } catch {
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  if (!raw) {
+    // LLM still unavailable after retries — degrade gracefully.
+    return applySponsorOverride(enrichJobHeuristic(job, resume), job.company);
+  }
+
+  const sponsorshipTag = SPONSORSHIP_VALUES.includes(raw.sponsorshipTag)
     ? (raw.sponsorshipTag as JobEnrichment["sponsorshipTag"])
     : "unclear";
-  // DOL LCA data overrides "unclear"/"likely" with a known-sponsor signal.
-  if (sponsorshipTag !== "no" && lookupSponsor(job.company)) {
-    sponsorshipTag = "known_sponsor";
-  }
 
   const seniorityTag = SENIORITY_VALUES.includes(raw.seniorityTag)
     ? (raw.seniorityTag as JobEnrichment["seniorityTag"])
     : "mid";
 
-  return {
-    sponsorshipTag,
-    seniorityTag,
-    minYears: typeof raw.minYears === "number" ? raw.minYears : null,
-    fitScore: typeof raw.fitScore === "number" ? raw.fitScore : null,
-    fitSummary: raw.fitSummary || null,
-  };
+  return applySponsorOverride(
+    {
+      sponsorshipTag,
+      seniorityTag,
+      minYears: typeof raw.minYears === "number" ? raw.minYears : null,
+      fitScore: typeof raw.fitScore === "number" ? raw.fitScore : null,
+      fitSummary: raw.fitSummary || null,
+    },
+    job.company
+  );
 }
 
 export { hasLlmKey };
