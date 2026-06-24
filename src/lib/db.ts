@@ -55,6 +55,9 @@ function runMigrations(db: Database.Database) {
   if (!hasJ("job_level"))       db.exec("ALTER TABLE jobs ADD COLUMN job_level TEXT");
   if (!hasJ("job_function"))    db.exec("ALTER TABLE jobs ADD COLUMN job_function TEXT");
   if (!hasJ("embed_score"))     db.exec("ALTER TABLE jobs ADD COLUMN embed_score REAL");
+  // jd_embedding: raw 1536-float32 vector (BLOB) from the open-jobs parquet,
+  // the feature for the learned preference ranker. NULL until backfilled.
+  if (!hasJ("jd_embedding"))    db.exec("ALTER TABLE jobs ADD COLUMN jd_embedding BLOB");
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_jobs_open_jobs_id ON jobs(open_jobs_id) WHERE open_jobs_id IS NOT NULL"
   );
