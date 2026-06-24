@@ -56,6 +56,8 @@ export default function SetupPage() {
   const [pasteText, setPasteText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [rescoreMsg, setRescoreMsg] = useState<string | null>(null);
+  const [rescoring, setRescoring] = useState(false);
 
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -102,6 +104,9 @@ export default function SetupPage() {
     }
     setResume(data.resume.data);
     setResumeMeta({ id: data.resume.id, createdAt: new Date().toISOString() });
+    if (typeof data.rescored === "number") {
+      setRescoreMsg(`Re-scored ${data.rescored} jobs against your new resume.`);
+    }
   }
 
   async function handlePasteSubmit(e: FormEvent) {
@@ -122,7 +127,23 @@ export default function SetupPage() {
     }
     setResume(data.resume.data);
     setResumeMeta({ id: data.resume.id, createdAt: new Date().toISOString() });
+    if (typeof data.rescored === "number") {
+      setRescoreMsg(`Re-scored ${data.rescored} jobs against your new resume.`);
+    }
     setPasteText("");
+  }
+
+  async function handleRescore() {
+    setRescoring(true);
+    setRescoreMsg(null);
+    const res = await fetch("/api/feed/rescore", { method: "POST" });
+    const data = await res.json();
+    setRescoring(false);
+    setRescoreMsg(
+      res.ok
+        ? `Re-scored ${data.rescored} jobs against your master resume.`
+        : data.error || "Re-score failed"
+    );
   }
 
   async function handleProfileSubmit(e: FormEvent) {
@@ -252,6 +273,20 @@ export default function SetupPage() {
         </form>
 
         {uploadError && <p className="mt-2 text-sm text-red-600">{uploadError}</p>}
+
+        {resume && (
+          <div className="mt-4 flex items-center gap-3 border-t border-zinc-100 pt-4">
+            <button
+              type="button"
+              onClick={handleRescore}
+              disabled={rescoring}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {rescoring ? "Re-scoring…" : "Re-score feed"}
+            </button>
+            {rescoreMsg && <span className="text-sm text-zinc-600">{rescoreMsg}</span>}
+          </div>
+        )}
       </section>
 
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">

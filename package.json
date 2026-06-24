@@ -18,7 +18,8 @@
     "auto-tailor": "tsx scripts/auto-tailor.ts",
     "refresh-open-jobs": "tsx scripts/refresh-open-jobs.ts",
     "seed-open-jobs": "python3 scripts/import-open-jobs.py",
-    "embed-rerank": "python3 scripts/embed-rerank.py"
+    "embed-rerank": "python3 scripts/embed-rerank.py",
+    "rescore": "tsx scripts/rescore-feed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",

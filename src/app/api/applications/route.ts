@@ -1,5 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { getBackgroundProvider } from "@/lib/llm";
+import { autoTailorAndPrep } from "@/lib/auto-pipeline";
+
+/**
+ * Kick off the full tailoring pipeline for a freshly-saved application in the
+ * background (no manual Lab clicks). Fire-and-forget: the save response returns
+ * immediately while Diagnose → Keywords → Rewrite → Outreach → Interview-prep run
+ * on the always-on server. Gated on an LLM key so it no-ops cleanly without one.
+ */
+function kickoffAutoTailor(db: ReturnType<typeof getDb>, applicationId: number) {
+  const provider = getBackgroundProvider();
+  if (!provider.hasKey()) return;
+  void autoTailorAndPrep(db, applicationId, provider).catch((err) =>
+    console.error(`[auto-tailor-on-save] application ${applicationId} failed:`, err)
+  );
+}
 
 /** Create a tracker application for an existing job (e.g. saving one from the feed). */
 export async function POST(request: NextRequest) {
@@ -25,8 +41,10 @@ export async function POST(request: NextRequest) {
   const res = db
     .prepare("INSERT INTO applications (job_id, status) VALUES (?, 'saved')")
     .run(jobId);
+  const applicationId = Number(res.lastInsertRowid);
+  kickoffAutoTailor(db, applicationId);
   return NextResponse.json({
-    application: { id: Number(res.lastInsertRowid), status: "saved" },
+    application: { id: applicationId, status: "saved" },
     created: true,
   });
 }

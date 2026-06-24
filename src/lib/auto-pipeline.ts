@@ -325,3 +325,18 @@ export async function triggerInterviewPrep(
   await runPipelineStep(db, applicationId, "interview", provider);
   return true;
 }
+
+/**
+ * Full on-save pipeline: tailor (Diagnose → Keywords → Rewrite → Outreach), then
+ * speculatively run interview prep (no-ops until a tailored resume exists, which
+ * Rewrite just produced). Used to run everything automatically the moment a job
+ * is saved — no manual Lab clicks. Designed to be called fire-and-forget.
+ */
+export async function autoTailorAndPrep(
+  db: Database.Database,
+  applicationId: number,
+  provider?: LlmProvider
+): Promise<void> {
+  await autoTailorApplication(db, applicationId, provider);
+  await triggerInterviewPrep(db, applicationId, provider);
+}

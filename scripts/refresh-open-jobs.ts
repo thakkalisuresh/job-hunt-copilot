@@ -158,27 +158,43 @@ async function main() {
   }
 }
 
-/** Snapshot the local DB and upload it to the live Fly machine, then restart. */
+/** Resolve the flyctl binary path (local ~/.fly/bin or on PATH in CI). */
+function resolveFlyctl(): string {
+  const home = process.env.HOME || "";
+  const local = path.join(home, ".fly", "bin", "flyctl");
+  return fs.existsSync(local) ? local : "flyctl";
+}
+
+/**
+ * Snapshot the local DB and ship it to the live Fly machine, then restart.
+ * Uses the safe temp-swap pattern (upload to import.db → mv over app.db → clear
+ * wal/shm) so a dropped upload never corrupts the live DB, and resolves the
+ * machine ID explicitly (required when not running interactively, e.g. in CI).
+ */
 function pushToFly() {
   const app = process.env.FLY_APP || "job-hunt-copilot";
-  const home = process.env.HOME || "";
-  const flyctl = [
-    path.join(home, ".fly", "bin", "flyctl"),
-    "flyctl",
-    "fly",
-  ].find((c) => c === "flyctl" || c === "fly" || fs.existsSync(c)) || "flyctl";
+  const flyctl = resolveFlyctl();
   const snapshot = "/tmp/app.db";
 
   console.log(`[refresh-open-jobs] pushing DB to Fly app "${app}"…`);
   try {
     execSync(`/usr/bin/sqlite3 "${dbPath}" ".backup ${snapshot}"`, { stdio: "inherit" });
-    execSync(`"${flyctl}" ssh sftp put "${snapshot}" /app/data/app.db --app ${app}`, { stdio: "inherit" });
-    // Clear stale WAL/SHM so the swapped DB is read cleanly, then restart.
-    execSync(`"${flyctl}" ssh console --app ${app} -C "sh -c 'rm -f /app/data/app.db-wal /app/data/app.db-shm'"`, { stdio: "inherit" });
-    execSync(`"${flyctl}" machine restart --app ${app}`, { stdio: "inherit" });
-    console.log("[refresh-open-jobs] Fly push complete.");
+    // Upload to a temp path, then atomically swap over app.db + clear wal/shm.
+    execSync(`"${flyctl}" ssh sftp put "${snapshot}" /app/data/import.db --app ${app}`, { stdio: "inherit" });
+    execSync(
+      `"${flyctl}" ssh console --app ${app} -C "sh -c 'mv /app/data/import.db /app/data/app.db && rm -f /app/data/app.db-wal /app/data/app.db-shm'"`,
+      { stdio: "inherit" }
+    );
+    // `machine restart` needs an explicit ID when non-interactive — look it up.
+    const listed = execSync(`"${flyctl}" machines list --app ${app} --json`, { encoding: "utf8" });
+    const machines = JSON.parse(listed) as Array<{ id: string }>;
+    const machineId = machines[0]?.id;
+    if (!machineId) throw new Error("no Fly machine found to restart");
+    execSync(`"${flyctl}" machine restart ${machineId} --app ${app}`, { stdio: "inherit" });
+    console.log(`[refresh-open-jobs] Fly push complete (restarted ${machineId}).`);
   } catch (err) {
     console.error("[refresh-open-jobs] Fly push failed:", err);
+    throw err;
   }
 }
 

@@ -1,0 +1,117 @@
+name: refresh-open-jobs
+
+# Smart hourly refresh of the open-jobs dataset.
+# Polls the dataset's Last-Modified each run; only when it CHANGES does it
+# download → import → push to prod. Once a version is imported, the actions/cache
+# key for that version exists, so every later poll that day is a ~30 s no-op.
+# Runs entirely on an ephemeral runner — the 20 GB parquet never touches your Mac
+# and is destroyed with the runner.
+#
+# One-time setup: add repo secret FLY_API_TOKEN  (fly tokens create deploy -x 8760h).
+
+on:
+  schedule:
+    # Hourly across ~6 AM–midnight PT (cron is UTC; PDT = UTC-7). DST shifts ±1 h.
+    - cron: "0 0-7,13-23 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a refresh even if the dataset version is unchanged"
+        type: boolean
+        default: false
+
+# Avoid overlapping runs (a refresh can take a while).
+concurrency:
+  group: refresh-open-jobs
+  cancel-in-progress: false
+
+env:
+  OPEN_JOBS_URL: https://download.jobscream.com/open-jobs.parquet
+  FLY_APP: job-hunt-copilot
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read dataset version (Last-Modified)
+        id: ver
+        run: |
+          LM=$(curl -sI "$OPEN_JOBS_URL" | awk 'tolower($1)=="last-modified:"{ $1=""; print }' | tr -d '\r' | xargs)
+          if [ -z "$LM" ]; then LM="day-$(date -u +%Y%m%d)"; fi   # fallback: one key per day
+          H=$(printf '%s' "$LM" | shasum | cut -c1-16)
+          echo "key=$H" >> "$GITHUB_OUTPUT"
+          echo "Dataset Last-Modified: $LM  (cache key $H)"
+
+      - name: Version gate (skip if already imported)
+        id: gate
+        uses: actions/cache@v4
+        with:
+          path: .oj-marker
+          key: open-jobs-imported-${{ steps.ver.outputs.key }}
+
+      - name: Decide whether to run
+        id: go
+        run: |
+          if [ "${{ steps.gate.outputs.cache-hit }}" != "true" ] || [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Dataset changed (or forced) — refreshing."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Already imported this version — nothing to do."
+          fi
+
+      - name: Free disk space (fit the 20 GB parquet)
+        if: steps.go.outputs.run == 'true'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: true
+
+      - name: Setup Python
+        if: steps.go.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        if: steps.go.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps (pyarrow, npm, flyctl)
+        if: steps.go.outputs.run == 'true'
+        run: |
+          pip install pyarrow
+          npm ci
+          curl -L https://fly.io/install.sh | sh
+          echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
+
+      - name: Pull live prod DB (merge target — preserves applications + triage logs)
+        if: steps.go.outputs.run == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          mkdir -p data
+          flyctl ssh sftp get /app/data/app.db data/app.db --app "$FLY_APP"
+          ls -la data/app.db
+
+      - name: Refresh open-jobs and push to prod
+        if: steps.go.outputs.run == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          OPEN_JOBS_DOWNLOAD_URL: ${{ env.OPEN_JOBS_URL }}
+          OPEN_JOBS_PARQUET_URL: open-jobs.parquet
+          OPEN_JOBS_PUSH_TO_FLY: "1"
+          # Change the feed's focus here (defaults to HR if unset):
+          # OPEN_JOBS_FUNCTION: engineering
+          # OPEN_JOBS_TITLE_TERMS: "software engineer,backend,platform,full stack"
+        run: npm run refresh-open-jobs
+
+      - name: Mark this version imported (persists the cache key)
+        if: steps.go.outputs.run == 'true'
+        run: printf '%s' "${{ steps.ver.outputs.key }}" > .oj-marker

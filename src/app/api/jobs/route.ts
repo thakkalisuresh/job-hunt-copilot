@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { EMPTY_RESUME, ResumeData } from "@/lib/resume";
 import { measurePageFit } from "@/lib/resume-render";
+import { getBackgroundProvider } from "@/lib/llm";
+import { autoTailorAndPrep } from "@/lib/auto-pipeline";
 
 export interface JobWithApplication {
   id: number;
@@ -83,9 +85,18 @@ export async function POST(request: NextRequest) {
   const appInsert = db
     .prepare(`INSERT INTO applications (job_id, status) VALUES (?, 'saved')`)
     .run(jobId);
+  const applicationId = Number(appInsert.lastInsertRowid);
+
+  // Auto-run the full tailoring pipeline in the background (no manual clicks).
+  const provider = getBackgroundProvider();
+  if (provider.hasKey()) {
+    void autoTailorAndPrep(db, applicationId, provider).catch((err) =>
+      console.error(`[auto-tailor-on-save] application ${applicationId} failed:`, err)
+    );
+  }
 
   return NextResponse.json({
     job: { id: jobId, company, title, location, jdText, url },
-    application: { id: appInsert.lastInsertRowid, status: "saved" },
+    application: { id: applicationId, status: "saved" },
   });
 }

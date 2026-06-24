@@ -55,7 +55,7 @@ Guidance:
 }
 
 /** Apply the DOL LCA known-sponsor override to any enrichment result. */
-function applySponsorOverride(enrichment: JobEnrichment, company: string): JobEnrichment {
+export function applySponsorOverride(enrichment: JobEnrichment, company: string): JobEnrichment {
   if (enrichment.sponsorshipTag !== "no" && lookupSponsor(company)) {
     return { ...enrichment, sponsorshipTag: "known_sponsor" };
   }

@@ -260,12 +260,15 @@ def main():
                     help="URL or local path to open-jobs.parquet")
     ap.add_argument("--db", default="data/app.db",
                     help="Path to SQLite DB (default: data/app.db)")
-    ap.add_argument("--function", dest="functions", default="hr",
-                    help="Comma-separated job functions to include (default: hr)")
-    ap.add_argument("--country", default="US",
-                    help="ISO-2 country code (default: US)")
-    ap.add_argument("--title-terms", dest="title_terms", default=None,
-                    help="Comma-separated title keyword overrides")
+    ap.add_argument("--function", dest="functions",
+                    default=os.environ.get("OPEN_JOBS_FUNCTION", "hr"),
+                    help="Comma-separated job functions (default: $OPEN_JOBS_FUNCTION or 'hr')")
+    ap.add_argument("--country",
+                    default=os.environ.get("OPEN_JOBS_COUNTRY", "US"),
+                    help="ISO-2 country code (default: $OPEN_JOBS_COUNTRY or 'US')")
+    ap.add_argument("--title-terms", dest="title_terms",
+                    default=os.environ.get("OPEN_JOBS_TITLE_TERMS"),
+                    help="Comma-separated title keyword overrides (default: $OPEN_JOBS_TITLE_TERMS or built-in HR terms)")
     ap.add_argument("--batch", type=int, default=20_000,
                     help="Parquet batch size (default: 20000)")
     ap.add_argument("--max-batches", type=int, default=0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { extractTextFromFile, structureResume, ResumeData } from "@/lib/resume";
 import { measurePageFit } from "@/lib/resume-render";
+import { rescoreAllJobs } from "@/lib/jobs/rescore";
 
 interface ResumeRow {
   id: number;
@@ -82,7 +83,16 @@ export async function POST(request: NextRequest) {
     result.lastInsertRowid
   );
 
+  // Re-score the whole feed against the new master resume (free heuristic, instant).
+  let rescored = 0;
+  try {
+    rescored = rescoreAllJobs(db, structured);
+  } catch (err) {
+    console.error("[resume] rescore after master change failed:", err);
+  }
+
   return NextResponse.json({
     resume: { id: result.lastInsertRowid, data: structured, rawText },
+    rescored,
   });
 }
